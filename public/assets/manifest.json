@@ -1,0 +1,29 @@
+{
+  "_comment": "Carte d'intégration des assets Higgsfield → entités du jeu. Les GLB sont texturés (image→3D Meshy). Les personnages sont riggés + animés (idle). Les poissons/décors sont statiques (animés en jeu par le BoidSystem / tweens). Source images conservées dans /assets/sources si besoin de reconversion.",
+  "scene_render": "assets/renders/complex_scene.png",
+  "characters": {
+    "curator": { "glb": "assets/models/curator.glb", "rigged": true, "animation": "idle", "pose": "a-pose" },
+    "visitor": { "glb": "assets/models/visitor.glb", "rigged": true, "animation": "idle", "pose": "a-pose" }
+  },
+  "fish": {
+    "guppy": "assets/models/fish_guppy.glb",
+    "neon_tetra": "assets/models/fish_neon_tetra.glb",
+    "clownfish": "assets/models/fish_clownfish.glb",
+    "angelfish": "assets/models/fish_angelfish.glb",
+    "mandarin": "assets/models/fish_mandarin.glb",
+    "lionfish": "assets/models/fish_lionfish.glb",
+    "golden_arowana": "assets/models/fish_golden_arowana.glb",
+    "goldfish": "assets/models/fish_goldfish.glb",
+    "koi": "assets/models/fish_koi.glb",
+    "arctic_char": "assets/models/fish_arctic_char.glb",
+    "frostfin": "assets/models/fish_frostfin.glb",
+    "leviathan_eel": "assets/models/fish_leviathan_eel.glb"
+  },
+  "decor": {
+    "coral": "assets/models/decor_coral.glb",
+    "kelp": "assets/models/decor_kelp.glb",
+    "rock": "assets/models/decor_rock.glb",
+    "treasure_chest": "assets/models/decor_treasure_chest.glb",
+    "filter_pump": "assets/models/decor_filter_pump.glb"
+  }
+}

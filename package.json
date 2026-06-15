@@ -1,0 +1,29 @@
+{
+  "name": "aqua-tycoon",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Jeu d'aquarium évolutif 3D (idle/tycoon) — Three.js + React.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "break_infinity.js": "^2.2.0",
+    "idb": "^8.0.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.4.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}

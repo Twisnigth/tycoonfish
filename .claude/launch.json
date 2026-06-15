@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "aqua-tycoon-dev",
+      "runtimeExecutable": "C:\\Claudecode\\tools\\node-v24.16.0-win-x64\\npm.cmd",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173,
+      "env": {
+        "PATH": "C:\\Claudecode\\tools\\node-v24.16.0-win-x64;C:\\Windows\\System32;C:\\Windows"
+      }
+    }
+  ]
+}
