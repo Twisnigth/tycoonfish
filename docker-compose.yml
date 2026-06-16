@@ -1,0 +1,8 @@
+services:
+  tycoonfish:
+    build: .
+    image: tycoonfish:latest
+    container_name: tycoonfish
+    ports:
+      - "8090:80" # http://<ip-serveur>:8090  → à mettre derrière le reverse proxy (NPM). Change 8090 si occupé.
+    restart: unless-stopped
