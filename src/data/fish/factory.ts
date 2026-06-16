@@ -33,6 +33,10 @@ export interface FishDef {
   scale?: number;
   /** Ajustements fins de la difficulté, par-dessus le profil de rareté. */
   difficulty?: Partial<FishingDifficulty>;
+  /** Prédateur (mange les plus petits). Défaut false. */
+  predator?: boolean;
+  /** Classe de taille 1..3. Défaut déduit de `scale`. */
+  sizeClass?: number;
 }
 
 export function defineFish(def: FishDef): FishSpecies {
@@ -54,5 +58,14 @@ export function defineFish(def: FishDef): FishSpecies {
     modelRef: def.modelRef ?? 'fish.basic',
     tint: def.tint ?? RARITY_COLOR[def.rarity],
     scale: def.scale ?? 1,
+    predator: def.predator ?? false,
+    sizeClass: def.sizeClass ?? sizeFromScale(def.scale ?? 1),
   };
+}
+
+/** Déduit une classe de taille (1..3) à partir de l'échelle visuelle. */
+function sizeFromScale(scale: number): number {
+  if (scale < 1.2) return 1;
+  if (scale < 1.8) return 2;
+  return 3;
 }

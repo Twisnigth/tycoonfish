@@ -83,6 +83,10 @@ export interface FishSpecies {
   tint: number;
   /** Échelle visuelle relative. */
   scale: number;
+  /** Prédateur : mange les poissons de classe de taille inférieure (M3). */
+  predator: boolean;
+  /** Classe de taille 1 (petit) .. 3 (grand) — prédation & compatibilité. */
+  sizeClass: number;
 }
 
 /** Catégorie d'amélioration de boutique. */

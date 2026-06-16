@@ -11,7 +11,7 @@ import type { GameState } from '../core/GameState';
 const DB_NAME = 'aqua-tycoon';
 const STORE = 'save';
 const KEY = 'main';
-const SCHEMA = 2;
+const SCHEMA = 4;
 
 function serialize(state: GameState): unknown {
   return {

@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Game } from '../core/Game';
 import { GRID, Tile } from '../world/Grid';
-import { BUILDINGS, type BuildingType } from '../data/buildings';
+import { BUILDINGS, isPathType, type BuildingType } from '../data/buildings';
 import { GridView } from './GridView';
+import { Environment } from './Environment';
 import { AgentRenderer } from './AgentRenderer';
 import { TankView } from './TankView';
 import { buildingModelUrl, decorModelUrl, loadObject } from './AssetLoader';
@@ -65,6 +66,7 @@ export class SceneManager {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.setupLights();
+    this.scene.add(new Environment().group);
     this.scene.add(this.gridView.group);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -127,7 +129,7 @@ export class SceneManager {
     const live = new Set<string>();
 
     for (const b of buildings) {
-      if (b.type === 'path') continue;
+      if (isPathType(b.type)) continue;
       live.add(b.id);
       if (this.views.has(b.id)) continue;
       this.addBuildingView(b);
@@ -159,8 +161,7 @@ export class SceneManager {
     this.scene.add(placeholder);
     this.views.set(b.id, { obj: placeholder });
 
-    const size =
-      def.render.kind === 'decor' ? GRID.cell * 0.9 : Math.max(def.w, def.h) * GRID.cell * 0.92;
+    const size = def.modelSize;
     const url =
       def.render.kind === 'decor'
         ? decorModelUrl(def.render.model)
@@ -186,16 +187,21 @@ export class SceneManager {
     if (cells.length === 0) return;
 
     const geo = new THREE.BoxGeometry(GRID.cell * 0.98, 0.1, GRID.cell * 0.98);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xd8c9a0, flatShading: true });
+    const mat = new THREE.MeshStandardMaterial({ flatShading: true });
     const mesh = new THREE.InstancedMesh(geo, mat, cells.length);
     mesh.receiveShadow = true;
     const m = new THREE.Matrix4();
+    const col = new THREE.Color();
+    const buildings = this.game.state.buildings;
     cells.forEach((cell, k) => {
       const w = g.gridToWorld(cell % g.w, (cell / g.w) | 0);
       m.makeTranslation(w.x, 0.05, w.z);
       mesh.setMatrixAt(k, m);
+      const b = buildings[g.occupant[cell]];
+      mesh.setColorAt(k, col.setHex(b ? BUILDINGS[b.type].tint ?? 0xd8c9a0 : 0xd8c9a0));
     });
     mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     this.pathMesh = mesh;
     this.scene.add(mesh);
   }
@@ -240,7 +246,8 @@ export class SceneManager {
   private act(tool: Tool, x: number, y: number): void {
     if (tool === null) {
       const b = this.game.buildingAt(x, y);
-      useUiStore.getState().select(b && b.tank ? b.id : null);
+      const selectable = b && (b.tank || b.salePrice !== undefined);
+      useUiStore.getState().select(selectable ? b!.id : null);
       return;
     }
     if (tool === 'remove') {

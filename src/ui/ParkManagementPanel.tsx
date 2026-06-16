@@ -8,11 +8,21 @@ export function ParkManagementPanel({ onStartExpedition }: { onStartExpedition: 
   const game = useGame();
   useGameVersion();
   const p = game.state.park;
-  const invCount = Object.values(game.state.caughtInventory).reduce((a, n) => a + n, 0);
+  const invCount = game.state.caughtInventory.length;
 
   return (
     <section className="panel park">
       <h2 className="panel-title">Gestion du parc</h2>
+
+      <div className="park-open">
+        <span>Parc&nbsp;: <strong>{p.isOpen ? 'Ouvert ✅' : 'Fermé ⛔'}</strong></span>
+        <button className="btn btn-sm" onClick={() => game.setParkOpen(!p.isOpen)}>
+          {p.isOpen ? 'Fermer' : 'Ouvrir'}
+        </button>
+      </div>
+      {p.isOpen && !game.agents.spawnReady && (
+        <p className="warn">⚠ Relie un chemin à l'entrée pour accueillir des visiteurs.</p>
+      )}
 
       <div className="park-stats">
         <div><span>Attrait</span><strong>{Math.round(p.appeal)}</strong></div>

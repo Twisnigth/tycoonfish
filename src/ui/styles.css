@@ -361,6 +361,8 @@ kbd {
 .ticket-ctrl { display: flex; align-items: center; gap: 8px; }
 .ticket-ctrl button { width: 28px; height: 28px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-size: 1.1rem; cursor: pointer; }
 .ticket-ctrl strong { min-width: 44px; text-align: center; }
+.park-open { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.warn { background: rgba(224,138,60,0.15); color: var(--warn); border-radius: 8px; padding: 6px 10px; font-size: 0.78rem; margin: 0 0 12px; }
 
 /* Barre de construction */
 .buildbar {

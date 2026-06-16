@@ -21,7 +21,10 @@
     "leviathan_eel": "assets/models/fish_leviathan_eel.glb",
     "blue_tang": "assets/models/fish_blue_tang.glb",
     "yellow_tang": "assets/models/fish_yellow_tang.glb",
-    "emperor_angelfish": "assets/models/fish_emperor_angelfish.glb"
+    "emperor_angelfish": "assets/models/fish_emperor_angelfish.glb",
+    "manta_ray": "assets/models/fish_manta_ray.glb",
+    "dolphin": "assets/models/fish_dolphin.glb",
+    "shark": "assets/models/fish_shark.glb"
   },
   "buildings": {
     "entrance": "assets/models/building_entrance.glb",
@@ -38,6 +41,10 @@
     "bench": "assets/models/decor_bench.glb",
     "tree": "assets/models/decor_tree.glb",
     "lamp": "assets/models/decor_lamp.glb",
-    "bin": "assets/models/decor_bin.glb"
+    "bin": "assets/models/decor_bin.glb",
+    "bench2": "assets/models/decor_bench2.glb",
+    "fountain": "assets/models/decor_fountain.glb",
+    "gazebo": "assets/models/decor_gazebo.glb",
+    "fishbone": "assets/models/decor_fishbone.glb"
   }
 }

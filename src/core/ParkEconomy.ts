@@ -4,8 +4,11 @@ import { BUILDINGS } from '../data/buildings';
 import { getFish } from '../data/fish';
 import { Rarity } from '../data/types';
 
-/** Durée d'une « journée » (cycle d'entretien), en ms. */
-export const DAY_MS = 120_000;
+/** Durée d'une « journée » (cycle d'entretien), en ms. Journées longues = gestion confortable. */
+export const DAY_MS = 300_000;
+
+/** Flux de base de visiteurs (curieux) quand le parc est ouvert et relié. */
+export const BASE_SPAWN_PER_SEC = 0.1;
 
 /** Attrait apporté par un poisson selon sa rareté (contrainte GD #1). */
 const RARITY_APPEAL: Record<Rarity, number> = {
@@ -21,10 +24,10 @@ export function speciesAppeal(id: string): number {
   return sp ? RARITY_APPEAL[sp.rarity] : 0;
 }
 
-/** Attrait DYNAMIQUE d'un bac = somme de l'attrait de ses poissons. */
+/** Attrait DYNAMIQUE d'un bac = somme de l'attrait de ses poissons (× gène taille). */
 export function tankAppeal(tank: TankState): number {
   let a = 0;
-  for (const [id, n] of Object.entries(tank.fish)) a += speciesAppeal(id) * n;
+  for (const f of tank.fish) a += speciesAppeal(f.species) * f.genes.size;
   return a;
 }
 
@@ -41,7 +44,7 @@ export function computeAppeal(state: GameState): number {
 /** Visiteurs générés par seconde, fonction de l'attrait et du prix du billet. */
 export function spawnRatePerSec(state: GameState): number {
   const priceFactor = 1 / (1 + state.park.ticketPrice / 15);
-  return Math.max(0, state.park.appeal) * 0.03 * priceFactor;
+  return (BASE_SPAWN_PER_SEC + Math.max(0, state.park.appeal) * 0.03) * priceFactor;
 }
 
 export function dailyMaintenance(state: GameState): Decimal {

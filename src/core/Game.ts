@@ -7,13 +7,15 @@ import {
   type GameState,
   type PlacedBuilding,
 } from './GameState';
+import { createFish } from './Fish';
 import { GridManager, Tile } from '../world/Grid';
 import { AgentSystem } from '../systems/AgentSystem';
 import { addIncome, economyTick, spawnRatePerSec } from './ParkEconomy';
+import { ecosystemTick, KEEPER_HIRE_COST } from './Ecosystem';
 import {
   BUILDINGS,
   DONATION_PER_APPEAL,
-  FOOD_PRICE,
+  isPathType,
   type BuildingType,
 } from '../data/buildings';
 import { ALL_FISH, getFish } from '../data/fish';
@@ -43,7 +45,7 @@ export class Game {
     if (initial) replaceState(initial);
     this.agents = new AgentSystem(this.grid, () => this.state.buildings, {
       onDonate: (appeal) => addIncome(this.state, D(DONATION_PER_APPEAL).mul(appeal)),
-      onEat: () => addIncome(this.state, D(FOOD_PRICE)),
+      onEat: (price) => addIncome(this.state, D(price)),
       onLeave: (sat) => {
         this.state.stats.guestsServed += 1;
         const p = this.state.park;
@@ -73,7 +75,7 @@ export class Game {
     this.grid.occupant.fill(-1);
     this.state.buildings.forEach((b, idx) => {
       const def = BUILDINGS[b.type];
-      if (b.type === 'path') {
+      if (isPathType(b.type)) {
         const i = this.grid.idx(b.gx, b.gy);
         this.grid.tile[i] = Tile.Path;
         this.grid.occupant[i] = idx;
@@ -108,8 +110,9 @@ export class Game {
       const vol = def.w * def.h * 6;
       b.tank = createTank(def.render.biome, vol, def.render.temp);
     }
+    if (def.defaultSalePrice !== undefined) b.salePrice = def.defaultSalePrice;
     const idx = this.state.buildings.push(b) - 1;
-    if (type === 'path') {
+    if (isPathType(type)) {
       const i = this.grid.idx(gx, gy);
       this.grid.tile[i] = Tile.Path;
       this.grid.occupant[i] = idx;
@@ -168,6 +171,14 @@ export class Game {
     bumpStore();
   }
 
+  /** Règle le prix de vente d'une boutique (snacks/merch). */
+  setSalePrice(buildingId: string, price: number): void {
+    const b = this.state.buildings.find((x) => x.id === buildingId);
+    if (!b) return;
+    b.salePrice = Math.max(0, Math.round(price));
+    bumpStore();
+  }
+
   buyBait(amount: number): boolean {
     const cost = D(BAIT_PRICE).mul(amount);
     if (this.state.money.lt(cost)) return false;
@@ -193,17 +204,18 @@ export class Game {
     return pool[(Math.random() * pool.length) | 0];
   }
 
-  /** Capture réussie → le poisson va dans l'inventaire (à affecter à un bac). */
+  /** Capture réussie → une ENTITÉ poisson va dans l'inventaire (à affecter à un bac). */
   resolveCatch(species: FishSpecies): void {
-    this.state.caughtInventory[species.id] = (this.state.caughtInventory[species.id] ?? 0) + 1;
+    this.state.caughtInventory.push(createFish(species.id, { origin: 'caught' }));
     this.state.stats.fishCaught += 1;
     this.events.emit('fishCaught', { speciesId: species.id });
     bumpStore();
   }
 
-  /** Affecte un poisson de l'inventaire à un bac compatible. */
+  /** Déplace un poisson (entité) de l'inventaire vers un bac compatible. */
   assignFish(buildingId: string, speciesId: string): boolean {
-    if ((this.state.caughtInventory[speciesId] ?? 0) <= 0) return false;
+    const invIdx = this.state.caughtInventory.findIndex((f) => f.species === speciesId);
+    if (invIdx < 0) return false;
     const b = this.state.buildings.find((x) => x.id === buildingId);
     const sp = getFish(speciesId);
     if (!b || !b.tank || !sp) return false;
@@ -212,11 +224,17 @@ export class Game {
     if (b.tank.waterTemp < r.minTemp || b.tank.waterTemp > r.maxTemp) return false;
     if (b.tank.volume < r.minVolume) return false;
 
-    this.state.caughtInventory[speciesId] -= 1;
-    b.tank.fish[speciesId] = (b.tank.fish[speciesId] ?? 0) + 1;
+    const [fish] = this.state.caughtInventory.splice(invIdx, 1);
+    b.tank.fish.push(fish);
     this.events.emit('tankUpdated', { buildingId });
     bumpStore();
     return true;
+  }
+
+  /** Ouvre ou ferme le parc (gating de l'arrivée des visiteurs). */
+  setParkOpen(open: boolean): void {
+    this.state.park.isOpen = open;
+    bumpStore();
   }
 
   // ---- Boucles -----------------------------------------------------------
@@ -229,17 +247,22 @@ export class Game {
 
   /** Simulation foule (appelée à la fréquence du rendu). */
   simulateAgents(dt: number): void {
-    this.spawnAcc += spawnRatePerSec(this.state) * dt;
-    while (this.spawnAcc >= 1) {
-      this.spawnAcc -= 1;
-      if (this.agents.spawnReady) {
-        const before = this.agents.count;
-        this.agents.spawn();
-        if (this.agents.count > before) {
-          addIncome(this.state, D(this.state.park.ticketPrice)); // billet à l'entrée
-          this.state.park.guestsInPark += 1;
+    // On ne fait entrer de nouveaux visiteurs que si le parc est OUVERT et relié.
+    if (this.state.park.isOpen) {
+      this.spawnAcc += spawnRatePerSec(this.state) * dt;
+      while (this.spawnAcc >= 1) {
+        this.spawnAcc -= 1;
+        if (this.agents.spawnReady) {
+          const before = this.agents.count;
+          this.agents.spawn();
+          if (this.agents.count > before) {
+            addIncome(this.state, D(this.state.park.ticketPrice)); // billet à l'entrée
+            this.state.park.guestsInPark += 1;
+          }
         }
       }
+    } else {
+      this.spawnAcc = 0;
     }
     this.agents.update(dt);
   }

@@ -22,7 +22,7 @@ const OBSERVE_CHANCE = 0.55;
 
 export interface AgentCallbacks {
   onDonate: (appeal: number) => void;
-  onEat: () => void;
+  onEat: (price: number) => void;
   onLeave: (satisfaction: number) => void;
 }
 
@@ -262,7 +262,7 @@ export class AgentSystem {
         this.timer[i] = EAT_TIME;
         this.hunger[i] = 0;
         this.happy[i] += 1;
-        this.cb.onEat();
+        this.cb.onEat(f.b.salePrice ?? 12);
         return true;
       }
       return false;

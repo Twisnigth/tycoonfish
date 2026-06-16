@@ -8,8 +8,6 @@ import { decorModelUrl, fishModelUrl, loadInstanceParts, loadObject } from './As
 /** Facteur d'échelle global des poissons GLB (normalisés en unité). */
 const FISH_RENDER_SCALE = 0.7;
 
-/** Nombre MAX d'individus rendus par bac (la quantité économique est découplée). */
-const RENDER_CAP = 40;
 const WALL_MARGIN = 0.35;
 
 interface Agent {
@@ -142,49 +140,38 @@ export class TankView {
     this.statics.push(this.bubbles);
   }
 
-  /** Recalcule la signature de population du bac. */
+  /** Signature de population : change dès qu'un poisson est ajouté/retiré. */
   private computePopKey(): string {
-    return Object.entries(this.tank.fish)
-      .filter(([, n]) => n > 0)
-      .map(([id, n]) => `${id}:${n}`)
+    return this.tank.fish
+      .map((f) => f.species)
       .sort()
       .join('|');
   }
 
-  /** (Re)construit le banc rendu à partir de la population économique (capée). */
+  /** (Re)construit le banc rendu — STRICTEMENT 1:1 (un poisson = une instance). */
   syncSchool(): void {
     const key = this.computePopKey();
     if (key === this.popKey) return;
     this.popKey = key;
 
-    // Population économique totale.
-    const entries = Object.entries(this.tank.fish).filter(([, n]) => n > 0);
-    const total = entries.reduce((a, [, n]) => a + n, 0);
-
-    // Combien d'individus VISUELS par espèce (proportionnel, plafonné).
     this.agents = [];
-    for (const [id, count] of entries) {
-      const sp = getFish(id);
+    for (const fish of this.tank.fish) {
+      const sp = getFish(fish.species);
       if (!sp) continue;
-      const visual = total > 0 ? Math.max(1, Math.round((count / total) * RENDER_CAP)) : 0;
-      for (let i = 0; i < visual; i++) {
-        this.agents.push({
-          archetype: sp.modelRef,
-          speciesId: id,
-          scale: sp.scale * FISH_RENDER_SCALE * (0.85 + Math.random() * 0.3),
-          color: new THREE.Color(sp.tint),
-          pos: new THREE.Vector3(
-            (Math.random() - 0.5) * this.inner.x,
-            (Math.random() - 0.5) * this.inner.y,
-            (Math.random() - 0.5) * this.inner.z,
-          ),
-          vel: new THREE.Vector3(
-            (Math.random() - 0.5),
-            (Math.random() - 0.5) * 0.3,
-            (Math.random() - 0.5),
-          ).normalize().multiplyScalar(0.6),
-        });
-      }
+      this.agents.push({
+        archetype: sp.modelRef,
+        speciesId: fish.species,
+        scale: sp.scale * FISH_RENDER_SCALE * fish.genes.size * (0.85 + Math.random() * 0.3),
+        color: new THREE.Color(sp.tint),
+        pos: new THREE.Vector3(
+          (Math.random() - 0.5) * this.inner.x,
+          (Math.random() - 0.5) * this.inner.y,
+          (Math.random() - 0.5) * this.inner.z,
+        ),
+        vel: new THREE.Vector3(Math.random() - 0.5, (Math.random() - 0.5) * 0.3, Math.random() - 0.5)
+          .normalize()
+          .multiplyScalar(0.6),
+      });
     }
 
     this.rebuildMeshes();

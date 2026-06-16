@@ -1,10 +1,18 @@
 import { useGame, useGameVersion } from './GameContext';
 import { useUiStore } from '../store/uiStore';
 import { getFish } from '../data/fish';
+import { BUILDINGS } from '../data/buildings';
+import type { Fish } from '../core/Fish';
 
 const fishName = (id: string): string => getFish(id)?.name ?? id;
 
-/** Détails d'un bac sélectionné : sa population + affectation des poissons pêchés. */
+function groupBySpecies(list: Fish[]): [string, number][] {
+  const m = new Map<string, number>();
+  for (const f of list) m.set(f.species, (m.get(f.species) ?? 0) + 1);
+  return [...m.entries()];
+}
+
+/** Détails d'un objet sélectionné : bac (population + affectation) ou boutique (prix). */
 export function BuildingInspector() {
   const game = useGame();
   useGameVersion();
@@ -13,12 +21,34 @@ export function BuildingInspector() {
   if (!id) return null;
 
   const b = game.state.buildings.find((x) => x.id === id);
-  if (!b || !b.tank) return null;
+  if (!b) return null;
 
-  const fish = Object.entries(b.tank.fish).filter(([, n]) => n > 0);
-  const inv = Object.entries(game.state.caughtInventory).filter(([, n]) => n > 0);
+  // --- Boutique (snacks / souvenirs) ---
+  if (b.tank === undefined && b.salePrice !== undefined) {
+    const price = b.salePrice;
+    return (
+      <div className="inspector">
+        <header>
+          <strong>{BUILDINGS[b.type].name}</strong>
+          <button className="btn-close" onClick={() => select(null)}>✕</button>
+        </header>
+        <h4>Prix de vente</h4>
+        <div className="ticket-ctrl">
+          <button onClick={() => game.setSalePrice(id, price - 1)}>−</button>
+          <strong>{price}$</strong>
+          <button onClick={() => game.setSalePrice(id, price + 1)}>+</button>
+        </div>
+        <p className="muted">Prix élevé = plus de revenu par vente, mais des visiteurs plus exigeants.</p>
+      </div>
+    );
+  }
 
-  // Compatibilité d'une espèce avec ce bac.
+  if (!b.tank) return null;
+
+  // --- Bac ---
+  const tankFish = groupBySpecies(b.tank.fish);
+  const inv = groupBySpecies(game.state.caughtInventory);
+
   const compatible = (sid: string): boolean => {
     const sp = getFish(sid);
     if (!sp || !b.tank) return false;
@@ -38,12 +68,12 @@ export function BuildingInspector() {
         <button className="btn-close" onClick={() => select(null)}>✕</button>
       </header>
 
-      <h4>Dans le bac ({b.tank.waterTemp}°C · vol. {b.tank.volume})</h4>
-      {fish.length === 0 ? (
+      <h4>Dans le bac ({b.tank.waterTemp}°C · vol. {b.tank.volume} · {b.tank.fish.length} poisson(s))</h4>
+      {tankFish.length === 0 ? (
         <p className="muted">Bac vide.</p>
       ) : (
         <ul className="insp-list">
-          {fish.map(([sid, n]) => (
+          {tankFish.map(([sid, n]) => (
             <li key={sid}>{fishName(sid)} ×{n}</li>
           ))}
         </ul>
