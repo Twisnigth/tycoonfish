@@ -1,0 +1,8 @@
+services:
+  tycoonfish:
+    build: .
+    image: tycoonfish:latest
+    container_name: tycoonfish
+    ports:
+      - "8080:80" # http://<ip-serveur>:8080  → à mettre derrière le reverse proxy ZimaOS
+    restart: unless-stopped
