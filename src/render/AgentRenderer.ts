@@ -16,6 +16,7 @@ const _hidden = new THREE.Vector3(0, -9999, 0);
  */
 export class AgentRenderer {
   private mesh: THREE.InstancedMesh | null = null;
+  private time = 0;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -35,9 +36,10 @@ export class AgentRenderer {
     this.scene.add(mesh);
   }
 
-  update(): void {
+  update(dt: number): void {
     const mesh = this.mesh;
     if (!mesh) return;
+    this.time += dt;
     const a = this.agents;
     const s = VISITOR_HEIGHT;
     _s.set(s, s, s);
@@ -45,7 +47,9 @@ export class AgentRenderer {
       if (a.active[i] === 0) {
         _m.compose(_hidden, _q, _s);
       } else {
-        _p.set(a.px[i], s * 0.5, a.pz[i]);
+        // Bobbing sinusoïdal vertical quand l'agent marche.
+        const bob = a.moving[i] ? Math.abs(Math.sin(this.time * 9 + i * 0.7)) * 0.08 : 0;
+        _p.set(a.px[i], s * 0.5 + bob, a.pz[i]);
         const ang = Math.atan2(a.hx[i], a.hz[i]);
         _q.setFromAxisAngle(_up, ang);
         _m.compose(_p, _q, _s);

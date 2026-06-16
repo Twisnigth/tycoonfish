@@ -45,17 +45,20 @@ export function BuildBar() {
 
       <div className="bb-items">
         {items.map((b) => {
+          const lockLevel = game.buildLockLevel(b.type);
+          const locked = lockLevel > 0;
           const affordable = game.state.money.gte(b.cost);
           return (
             <button
               key={b.type}
-              className={`bb-item ${tool === b.type ? 'active' : ''}`}
-              disabled={!affordable}
+              className={`bb-item ${tool === b.type ? 'active' : ''} ${locked ? 'locked' : ''}`}
+              disabled={locked || !affordable}
+              title={locked ? `Débloqué au niveau ${lockLevel}` : ''}
               onClick={() => setTool(b.type)}
             >
               <span>{b.name}</span>
               <small>
-                {formatMoney(b.cost)} · {b.w}×{b.h}
+                {locked ? `🔒 Niv. ${lockLevel}` : `${formatMoney(b.cost)} · ${b.w}×${b.h}`}
               </small>
             </button>
           );

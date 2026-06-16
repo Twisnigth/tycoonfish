@@ -2,53 +2,79 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
- * Fabrique et met en cache les géométries low-poly réutilisables. Une
- * géométrie par archétype de poisson → réutilisée par les InstancedMesh
- * (1 draw call pour des milliers d'individus). Style flat-shading épuré.
+ * Fabrique et met en cache les géométries low-poly réutilisables. Une géométrie
+ * par archétype → réutilisée par les InstancedMesh (1 draw call). Chaque poisson
+ * = corps facetté (octaèdre) + nageoires (caudale, dorsale, pectorales) en fines
+ * « plaques » visibles sous tous les angles. Style flat-shading épuré, et bien
+ * plus reconnaissable que l'ancien cône — sert de modèle aux espèces sans GLB.
  */
 const cache = new Map<string, THREE.BufferGeometry>();
 
-/** Corps + nageoire caudale fusionnés en une seule géométrie low-poly. */
-function buildFish(opts: {
-  radialSegs: number;
-  bodyRadius: number;
-  bodyLength: number;
-  tailSize: number;
-  squash?: number; // aplatit verticalement (raies)
-}): THREE.BufferGeometry {
-  const { radialSegs, bodyRadius, bodyLength, tailSize, squash = 1 } = opts;
+interface FishParams {
+  bodyW: number;
+  bodyH: number;
+  bodyL: number;
+  tailH: number;
+  tailL: number;
+  dorsalH?: number;
+  wingW?: number; // nageoires pectorales / ailes (raies, exotiques)
+  wingL?: number;
+}
 
-  // Corps : cône peu segmenté orienté vers +Z (sens de nage).
-  const body = new THREE.ConeGeometry(bodyRadius, bodyLength, radialSegs);
-  body.rotateX(Math.PI / 2);
-  body.translate(0, 0, bodyLength * 0.15);
+/** Corps + nageoires fusionnés en une géométrie low-poly (nez vers +Z). */
+function buildFish(p: FishParams): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
 
-  // Queue : petit cône inversé à l'arrière.
-  const tail = new THREE.ConeGeometry(tailSize, tailSize * 1.6, 3);
-  tail.rotateX(-Math.PI / 2);
-  tail.translate(0, 0, -bodyLength * 0.5);
+  // Corps : octaèdre étiré → diamant facetté (flat-shading = facettes nettes).
+  const body = new THREE.OctahedronGeometry(0.5, 0);
+  body.scale(p.bodyW, p.bodyH, p.bodyL);
+  parts.push(body);
 
-  const merged = mergeGeometries([body, tail], false);
-  if (squash !== 1) merged.scale(1, squash, 1);
+  // Nageoire caudale : fine plaque verticale à l'arrière.
+  const tail = new THREE.BoxGeometry(0.05, p.tailH, p.tailL);
+  tail.translate(0, 0, -p.bodyL * 0.5 - p.tailL * 0.42);
+  parts.push(tail);
+
+  // Nageoire dorsale : fine plaque verticale sur le dessus.
+  if (p.dorsalH) {
+    const dorsal = new THREE.BoxGeometry(0.05, p.dorsalH, p.bodyL * 0.5);
+    dorsal.translate(0, p.bodyH * 0.45, 0);
+    parts.push(dorsal);
+  }
+
+  // Nageoires pectorales / ailes : fines plaques horizontales sur les côtés.
+  if (p.wingW && p.wingL) {
+    const off = p.bodyW * 0.4 + p.wingW * 0.5;
+    const left = new THREE.BoxGeometry(p.wingW, 0.05, p.wingL);
+    left.translate(-off, 0, 0);
+    const right = new THREE.BoxGeometry(p.wingW, 0.05, p.wingL);
+    right.translate(off, 0, 0);
+    parts.push(left, right);
+  }
+
+  // Uniformiser l'indexation (Octahedron est non-indexé, Box indexé) sinon
+  // mergeGeometries renvoie null.
+  const merged = mergeGeometries(parts.map((g) => g.toNonIndexed()), false);
+  if (!merged) throw new Error('mergeGeometries a échoué');
   merged.computeVertexNormals();
   return merged;
 }
 
 function create(ref: string): THREE.BufferGeometry {
   switch (ref) {
-    case 'fish.round':
-      return buildFish({ radialSegs: 6, bodyRadius: 0.42, bodyLength: 0.8, tailSize: 0.22 });
-    case 'fish.long':
-      return buildFish({ radialSegs: 5, bodyRadius: 0.22, bodyLength: 1.5, tailSize: 0.2 });
-    case 'fish.exotic':
-      return buildFish({ radialSegs: 8, bodyRadius: 0.34, bodyLength: 1.0, tailSize: 0.3 });
-    case 'fish.eel':
-      return buildFish({ radialSegs: 4, bodyRadius: 0.16, bodyLength: 2.2, tailSize: 0.14 });
-    case 'fish.ray':
-      return buildFish({ radialSegs: 6, bodyRadius: 0.5, bodyLength: 0.7, tailSize: 0.12, squash: 0.35 });
+    case 'fish.round': // corps haut et plat (chirurgiens, scalaires, discus)
+      return buildFish({ bodyW: 0.4, bodyH: 0.72, bodyL: 0.82, tailH: 0.42, tailL: 0.3, dorsalH: 0.34 });
+    case 'fish.long': // corps allongé fuselé (arowana, koï, esturgeon)
+      return buildFish({ bodyW: 0.3, bodyH: 0.36, bodyL: 1.7, tailH: 0.46, tailL: 0.32, dorsalH: 0.18 });
+    case 'fish.exotic': // nageoires marquées (rascasse, mandarin, anges)
+      return buildFish({ bodyW: 0.42, bodyH: 0.52, bodyL: 0.95, tailH: 0.5, tailL: 0.34, dorsalH: 0.42, wingW: 0.34, wingL: 0.5 });
+    case 'fish.eel': // corps très long et fin (anguilles, serpents)
+      return buildFish({ bodyW: 0.18, bodyH: 0.22, bodyL: 2.4, tailH: 0.26, tailL: 0.26, dorsalH: 0.12 });
+    case 'fish.ray': // corps aplati + grandes ailes + queue fouet (raies)
+      return buildFish({ bodyW: 0.5, bodyH: 0.16, bodyL: 0.9, tailH: 0.08, tailL: 0.7, wingW: 0.75, wingL: 0.7 });
     case 'fish.basic':
-    default:
-      return buildFish({ radialSegs: 5, bodyRadius: 0.3, bodyLength: 1.0, tailSize: 0.24 });
+    default: // poisson standard
+      return buildFish({ bodyW: 0.42, bodyH: 0.46, bodyL: 1.05, tailH: 0.46, tailL: 0.34, dorsalH: 0.24 });
   }
 }
 

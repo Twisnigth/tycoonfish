@@ -2,9 +2,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Game } from '../core/Game';
 import { GRID, Tile } from '../world/Grid';
-import { BUILDINGS, type BuildingType } from '../data/buildings';
+import { BUILDINGS, isPathType, type BuildingType } from '../data/buildings';
 import { GridView } from './GridView';
+import { Environment } from './Environment';
 import { AgentRenderer } from './AgentRenderer';
+import { KeeperRenderer } from './KeeperRenderer';
+import { pathGeometry, PATH_DIRS } from './PathTiles';
 import { TankView } from './TankView';
 import { buildingModelUrl, decorModelUrl, loadObject } from './AssetLoader';
 import { useUiStore, type Tool } from '../store/uiStore';
@@ -28,10 +31,13 @@ export class SceneManager {
 
   private readonly gridView = new GridView();
   private readonly agentRenderer: AgentRenderer;
+  private readonly keeperRenderer: KeeperRenderer;
   private readonly views = new Map<string, BuildingView>();
-  private pathMesh: THREE.InstancedMesh | null = null;
+  private pathMeshes: THREE.InstancedMesh[] = [];
+  private readonly pathMaterial = new THREE.MeshStandardMaterial({ flatShading: true });
 
   private readonly ghost: THREE.Mesh;
+  private litterMesh!: THREE.InstancedMesh;
   private readonly ray = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly pointer = new THREE.Vector2();
@@ -39,6 +45,9 @@ export class SceneManager {
   private downPos: { x: number; y: number } | null = null;
 
   private camOffset = new THREE.Vector3();
+  private camYaw = Math.PI / 4; // angle horizontal de la caméra (rotation)
+  private camHorizDist = Math.hypot(40, 40); // distance horizontale (conserve l'angle iso)
+  private camHeight = 38;
   private frustum = 30;
   private panLimit = 44;
   private time = 0;
@@ -65,6 +74,7 @@ export class SceneManager {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.setupLights();
+    this.scene.add(new Environment().group);
     this.scene.add(this.gridView.group);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -74,7 +84,6 @@ export class SceneManager {
     this.controls.maxZoom = 3.5;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
-    this.camOffset.copy(this.camera.position).sub(this.controls.target);
 
     // Fantôme de construction.
     this.ghost = new THREE.Mesh(
@@ -84,10 +93,26 @@ export class SceneManager {
     this.ghost.visible = false;
     this.scene.add(this.ghost);
 
+    // Déchets (petits sacs) — InstancedMesh mis à jour chaque frame depuis game.litter.
+    this.litterMesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.32, 0.3, 0.32),
+      new THREE.MeshStandardMaterial({ color: 0x6b7a5a, flatShading: true }),
+      64,
+    );
+    this.litterMesh.castShadow = true;
+    this.litterMesh.count = 0;
+    this.scene.add(this.litterMesh);
+
     this.agentRenderer = new AgentRenderer(this.scene, game.agents);
+    this.keeperRenderer = new KeeperRenderer(this.scene, game);
 
     this.syncWorld();
-    this.game.events.on('worldChanged', () => this.syncWorld());
+    void this.keeperRenderer.sync();
+    this.game.events.on('worldChanged', () => {
+      this.syncWorld();
+      void this.keeperRenderer.sync();
+    });
+    this.game.events.on('staffChanged', () => void this.keeperRenderer.sync());
     this.game.events.on('tankUpdated', ({ buildingId }) => this.views.get(buildingId)?.tank?.refreshIfChanged());
 
     useUiStore.subscribe((s) => this.gridView.setBuildMode(s.tool !== null));
@@ -96,6 +121,21 @@ export class SceneManager {
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointerup', this.onPointerUp);
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('keydown', this.onKeyDown);
+  }
+
+  /** Rotation de la caméra : flèches ←/→ ou A/E (et Q). Zoom géré par OrbitControls. */
+  private onKeyDown = (e: KeyboardEvent): void => {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const k = e.key.toLowerCase();
+    if (k === 'arrowleft' || k === 'a' || k === 'q') this.camYaw -= Math.PI / 12;
+    else if (k === 'arrowright' || k === 'e' || k === 'd') this.camYaw += Math.PI / 12;
+  };
+
+  /** Tourne la caméra par incréments (utilisable depuis l'UI). */
+  rotateCamera(dir: -1 | 1): void {
+    this.camYaw += dir * (Math.PI / 8);
   }
 
   private setupLights(): void {
@@ -127,7 +167,7 @@ export class SceneManager {
     const live = new Set<string>();
 
     for (const b of buildings) {
-      if (b.type === 'path') continue;
+      if (isPathType(b.type)) continue;
       live.add(b.id);
       if (this.views.has(b.id)) continue;
       this.addBuildingView(b);
@@ -147,8 +187,8 @@ export class SceneManager {
     const center = this.worldCenter(b);
 
     if (def.render.kind === 'tank' && b.tank) {
-      const tank = new TankView(b.tank);
-      tank.group.position.set(center.x, Math.cbrt(b.tank.volume) * 1.05 * 0.82 * 0.5, center.z);
+      const tank = new TankView(b.tank, def.w, def.h);
+      tank.group.position.set(center.x, tank.groundY, center.z);
       this.scene.add(tank.group);
       this.views.set(b.id, { obj: tank.group, tank });
       return;
@@ -159,8 +199,7 @@ export class SceneManager {
     this.scene.add(placeholder);
     this.views.set(b.id, { obj: placeholder });
 
-    const size =
-      def.render.kind === 'decor' ? GRID.cell * 0.9 : Math.max(def.w, def.h) * GRID.cell * 0.92;
+    const size = def.modelSize;
     const url =
       def.render.kind === 'decor'
         ? decorModelUrl(def.render.model)
@@ -175,29 +214,50 @@ export class SceneManager {
   }
 
   private rebuildPaths(): void {
-    if (this.pathMesh) {
-      this.scene.remove(this.pathMesh);
-      this.pathMesh.dispose();
-      this.pathMesh = null;
+    for (const m of this.pathMeshes) {
+      this.scene.remove(m);
+      m.dispose();
     }
+    this.pathMeshes = [];
     const g = this.game.grid;
-    const cells: number[] = [];
-    for (let i = 0; i < g.tile.length; i++) if (g.tile[i] === Tile.Path) cells.push(i);
-    if (cells.length === 0) return;
 
-    const geo = new THREE.BoxGeometry(GRID.cell * 0.98, 0.1, GRID.cell * 0.98);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xd8c9a0, flatShading: true });
-    const mesh = new THREE.InstancedMesh(geo, mat, cells.length);
-    mesh.receiveShadow = true;
-    const m = new THREE.Matrix4();
-    cells.forEach((cell, k) => {
-      const w = g.gridToWorld(cell % g.w, (cell / g.w) | 0);
-      m.makeTranslation(w.x, 0.05, w.z);
-      mesh.setMatrixAt(k, m);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    this.pathMesh = mesh;
-    this.scene.add(mesh);
+    // Regroupe les cases de chemin par masque de connexion (auto-tiling).
+    const byMask = new Map<number, number[]>();
+    for (let i = 0; i < g.tile.length; i++) {
+      if (g.tile[i] !== Tile.Path) continue;
+      const x = i % g.w;
+      const y = (i / g.w) | 0;
+      let mask = 0;
+      for (const d of PATH_DIRS) {
+        const nx = x + d.dx;
+        const ny = y + d.dy;
+        if (!g.inBounds(nx, ny)) continue;
+        const t = g.tile[g.idx(nx, ny)];
+        if (t === Tile.Path || t === Tile.Building) mask |= d.bit; // chemin OU façade
+      }
+      const arr = byMask.get(mask);
+      if (arr) arr.push(i);
+      else byMask.set(mask, [i]);
+    }
+
+    const col = new THREE.Color();
+    const m4 = new THREE.Matrix4();
+    const buildings = this.game.state.buildings;
+    for (const [mask, cells] of byMask) {
+      const mesh = new THREE.InstancedMesh(pathGeometry(mask), this.pathMaterial, cells.length);
+      mesh.receiveShadow = true;
+      cells.forEach((cellIdx, k) => {
+        const w = g.gridToWorld(cellIdx % g.w, (cellIdx / g.w) | 0);
+        m4.makeTranslation(w.x, 0.06, w.z);
+        mesh.setMatrixAt(k, m4);
+        const b = buildings[g.occupant[cellIdx]];
+        mesh.setColorAt(k, col.setHex(b ? BUILDINGS[b.type].tint ?? 0xd8c9a0 : 0xd8c9a0));
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      this.pathMeshes.push(mesh);
+      this.scene.add(mesh);
+    }
   }
 
   // ---- Interaction / build mode -----------------------------------------
@@ -237,14 +297,46 @@ export class SceneManager {
     this.act(tool, cell.x, cell.y);
   };
 
+  private readonly tmpMat = new THREE.Matrix4();
+
+  /** Met à jour les instances de déchets depuis l'état (chaque frame). */
+  private updateLitter(): void {
+    const lit = this.game.litter;
+    const n = Math.min(lit.length, 64);
+    for (let i = 0; i < n; i++) {
+      this.tmpMat.makeTranslation(lit[i].x, 0.18, lit[i].z);
+      this.litterMesh.setMatrixAt(i, this.tmpMat);
+    }
+    this.litterMesh.count = n;
+    this.litterMesh.instanceMatrix.needsUpdate = true;
+  }
+
   private act(tool: Tool, x: number, y: number): void {
     if (tool === null) {
+      // Clic sur (ou près d') un déchet → on le ramasse.
+      const w = this.game.grid.gridToWorld(x, y);
+      if (this.game.pickUpLitterNear(w.x, w.z)) return;
       const b = this.game.buildingAt(x, y);
-      useUiStore.getState().select(b && b.tank ? b.id : null);
+      const selectable =
+        b &&
+        (b.tank !== undefined ||
+          b.salePrice !== undefined ||
+          b.type === 'expedition' ||
+          b.type === 'research' ||
+          b.type === 'nursery');
+      useUiStore.getState().select(selectable ? b!.id : null);
       return;
     }
     if (tool === 'remove') {
-      this.game.removeBuildingAt(x, y);
+      const b = this.game.buildingAt(x, y);
+      if (!b || b.type === 'entrance') return;
+      // Bacs et infrastructures : confirmation. Chemins/décor : suppression directe.
+      const needsConfirm = b.tank !== undefined || BUILDINGS[b.type].category === 'infra';
+      if (needsConfirm) {
+        useUiStore.getState().requestDemolish({ gx: b.gx, gy: b.gy, name: BUILDINGS[b.type].name });
+      } else {
+        this.game.removeBuildingAt(x, y);
+      }
       return;
     }
     if (tool === 'plot') {
@@ -295,12 +387,20 @@ export class SceneManager {
     t.x = THREE.MathUtils.clamp(t.x, -this.panLimit, this.panLimit);
     t.z = THREE.MathUtils.clamp(t.z, -this.panLimit, this.panLimit);
     t.y = 0;
+    // Recompose l'offset depuis le yaw (rotation) en conservant l'angle iso.
+    this.camOffset.set(
+      Math.sin(this.camYaw) * this.camHorizDist,
+      this.camHeight,
+      Math.cos(this.camYaw) * this.camHorizDist,
+    );
     this.camera.position.copy(t).add(this.camOffset);
     this.controls.update();
 
     this.game.simulateAgents(dt);
     for (const v of this.views.values()) v.tank?.update(dt, this.time);
-    this.agentRenderer.update();
+    this.agentRenderer.update(dt);
+    this.keeperRenderer.update(dt);
+    this.updateLitter();
     this.updateGhost();
 
     this.renderer.render(this.scene, this.camera);
