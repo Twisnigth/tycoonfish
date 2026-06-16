@@ -1,34 +1,48 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import { D, type Decimal } from '../core/numbers';
+import { D } from '../core/numbers';
 import type { GameState } from '../core/GameState';
 
 /**
- * Persistance via IndexedDB (et non localStorage : asynchrone, large capacité —
- * indispensable pour des dizaines de bacs et des milliers de poissons à terme).
- * Les `Decimal` ne sont pas sérialisables en JSON → on les encode en chaîne.
+ * Persistance via IndexedDB. La grille n'est PAS sérialisée (reconstruite depuis
+ * `buildings` + `plots` par le Game). Les `Decimal` (argent/recherche + registre
+ * du parc) sont encodés en chaîne. Schéma v2 ; une sauvegarde d'un autre schéma
+ * est ignorée (nouvelle partie).
  */
 const DB_NAME = 'aqua-tycoon';
 const STORE = 'save';
 const KEY = 'main';
+const SCHEMA = 2;
 
-const DECIMAL_FIELDS = ['money', 'research', 'totalEarned'] as const;
-type DecimalField = (typeof DECIMAL_FIELDS)[number];
-
-type SavedState = Omit<GameState, DecimalField> & Record<DecimalField, string>;
-
-function serialize(state: GameState): SavedState {
-  const out = { ...state } as unknown as SavedState;
-  for (const f of DECIMAL_FIELDS) {
-    out[f] = (state[f] as Decimal).toString();
-  }
-  return out;
+function serialize(state: GameState): unknown {
+  return {
+    ...state,
+    money: state.money.toString(),
+    research: state.research.toString(),
+    park: {
+      ...state.park,
+      incomeToday: state.park.incomeToday.toString(),
+      expensesToday: state.park.expensesToday.toString(),
+    },
+  };
 }
 
-function deserialize(saved: SavedState): GameState {
-  const out = { ...saved } as unknown as GameState;
-  for (const f of DECIMAL_FIELDS) {
-    out[f] = D(saved[f]);
-  }
+interface Saved {
+  schema: number;
+  money: string;
+  research: string;
+  park: { incomeToday: string; expensesToday: string; [k: string]: unknown };
+  [k: string]: unknown;
+}
+
+function deserialize(s: Saved): GameState {
+  const out = { ...s } as unknown as GameState;
+  out.money = D(s.money);
+  out.research = D(s.research);
+  out.park = {
+    ...(s.park as unknown as GameState['park']),
+    incomeToday: D(s.park.incomeToday),
+    expensesToday: D(s.park.expensesToday),
+  };
   return out;
 }
 
@@ -36,9 +50,7 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 function db(): Promise<IDBPDatabase> {
   return (dbPromise ??= openDB(DB_NAME, 1, {
     upgrade(database) {
-      if (!database.objectStoreNames.contains(STORE)) {
-        database.createObjectStore(STORE);
-      }
+      if (!database.objectStoreNames.contains(STORE)) database.createObjectStore(STORE);
     },
   }));
 }
@@ -52,8 +64,9 @@ export async function saveGame(state: GameState): Promise<void> {
 export async function loadGame(): Promise<GameState | null> {
   try {
     const conn = await db();
-    const saved = (await conn.get(STORE, KEY)) as SavedState | undefined;
-    return saved ? deserialize(saved) : null;
+    const saved = (await conn.get(STORE, KEY)) as Saved | undefined;
+    if (!saved || saved.schema !== SCHEMA) return null;
+    return deserialize(saved);
   } catch {
     return null;
   }

@@ -340,6 +340,78 @@ kbd {
   100% { opacity: 0; transform: translate(-50%, -80px) scale(1.05); }
 }
 
+/* ---------------- Park Builder ---------------- */
+.hud-day {
+  background: var(--bg-panel);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  box-shadow: var(--shadow);
+  font-weight: 700;
+}
+
+.panel.park { bottom: 168px; }
+.park-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.park-stats > div { background: rgba(255,255,255,0.55); border-radius: 10px; padding: 6px 10px; display: flex; flex-direction: column; }
+.park-stats span { font-size: 0.7rem; color: var(--ink-soft); }
+.park-stats strong { font-size: 1rem; }
+.park-stats .good { color: var(--good-2); }
+.park-stats .bad { color: var(--bad); }
+.ticket { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.ticket-ctrl { display: flex; align-items: center; gap: 8px; }
+.ticket-ctrl button { width: 28px; height: 28px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-size: 1.1rem; cursor: pointer; }
+.ticket-ctrl strong { min-width: 44px; text-align: center; }
+
+/* Barre de construction */
+.buildbar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: min(880px, 94vw);
+  background: var(--bg-panel);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+.bb-tools, .bb-tabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.bb-tools button, .bb-tabs button {
+  border: none; background: rgba(255,255,255,0.7); border-radius: 10px;
+  padding: 6px 12px; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink);
+}
+.bb-tools button small { color: var(--ink-soft); font-weight: 500; }
+.bb-tools button.active, .bb-tabs button.active { background: var(--accent); color: #fff; }
+.bb-items { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.bb-item {
+  flex: 0 0 auto; min-width: 110px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  border: 2px solid transparent; background: var(--bg-panel-solid);
+  border-radius: 12px; padding: 8px 12px; cursor: pointer; font: inherit; box-shadow: var(--shadow);
+}
+.bb-item span { font-weight: 700; }
+.bb-item small { color: var(--ink-soft); font-size: 0.72rem; }
+.bb-item.active { border-color: var(--accent); }
+.bb-item:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Inspecteur de bâtiment */
+.inspector {
+  position: absolute;
+  top: 96px;
+  left: 16px;
+  width: 280px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+.inspector header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.inspector h4 { margin: 12px 0 6px; font-size: 0.85rem; color: var(--accent-deep); }
+.insp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.insp-assign { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.muted { color: var(--ink-soft); font-size: 0.8rem; }
+
 /* ---------------- Toast ---------------- */
 .toast {
   position: fixed;

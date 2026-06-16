@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FishingSession, type StrikeResult } from '../systems/FishingSystem';
 import { RARITY_LABEL, type FishSpecies } from '../data/types';
-import { D, formatMoney } from '../core/numbers';
 import { useGame } from './GameContext';
 
 function hex(color: number): string {
@@ -75,7 +74,7 @@ export function FishingMinigame({
 
     if (session.finished) {
       if (session.phase === 'won') {
-        game.resolveCatch(species, session.quality, session.qualityBonus);
+        game.resolveCatch(species);
         setOutcome('won');
       } else {
         setOutcome('lost');
@@ -142,11 +141,9 @@ export function FishingMinigame({
             title="Prise réussie !"
             tone="win"
             lines={[
-              `${species.name} ajouté à votre bac`,
-              `Qualité : ${session.quality} (×${session.qualityBonus})`,
-              `Bonus immédiat : ${formatMoney(
-                D(species.baseRevenuePerTick).mul(60).mul(session.qualityBonus),
-              )}`,
+              `${species.name} ajouté à l'inventaire de pêche`,
+              `Qualité : ${session.quality}`,
+              'Sélectionne un bac compatible pour l’y placer.',
             ]}
             onClose={onClose}
           />

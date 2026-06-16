@@ -17,6 +17,7 @@ const loader = new GLTFLoader();
 
 export const fishModelUrl = (speciesId: string): string => `${BASE}assets/models/fish_${speciesId}.glb`;
 export const decorModelUrl = (id: string): string => `${BASE}assets/models/decor_${id}.glb`;
+export const buildingModelUrl = (id: string): string => `${BASE}assets/models/building_${id}.glb`;
 export const characterUrl = (id: string): string => `${BASE}assets/models/${id}.glb`;
 
 export interface InstanceParts {
@@ -27,23 +28,28 @@ export interface InstanceParts {
 const partsCache = new Map<string, Promise<InstanceParts | null>>();
 const objectCache = new Map<string, Promise<THREE.Object3D | null>>();
 
-/** Extrait la géométrie + matériau d'un GLB, normalisés pour l'instanciation. */
-export function loadInstanceParts(url: string): Promise<InstanceParts | null> {
-  let p = partsCache.get(url);
+/**
+ * Extrait géométrie + matériau d'un GLB, normalisés pour l'instanciation.
+ * `forwardZ` (défaut true) oriente l'axe le plus long sur +Z (sens de nage des
+ * poissons) ; à mettre à false pour les sujets verticaux (humanoïdes).
+ */
+export function loadInstanceParts(url: string, forwardZ = true): Promise<InstanceParts | null> {
+  const key = `${url}|${forwardZ}`;
+  let p = partsCache.get(key);
   if (!p) {
     p = loader
       .loadAsync(url)
-      .then((gltf) => extractParts(gltf))
+      .then((gltf) => extractParts(gltf, forwardZ))
       .catch((e) => {
         console.warn('[AssetLoader] échec GLB', url, e);
         return null;
       });
-    partsCache.set(url, p);
+    partsCache.set(key, p);
   }
   return p;
 }
 
-function extractParts(gltf: GLTF): InstanceParts | null {
+function extractParts(gltf: GLTF, forwardZ: boolean): InstanceParts | null {
   gltf.scene.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
   gltf.scene.traverse((o) => {
@@ -69,7 +75,7 @@ function extractParts(gltf: GLTF): InstanceParts | null {
   bb.getSize(size);
   bb.getCenter(center);
   geo.translate(-center.x, -center.y, -center.z);
-  if (size.x > size.z) geo.rotateY(Math.PI / 2); // axe long -> Z (sens de nage)
+  if (forwardZ && size.x > size.z) geo.rotateY(Math.PI / 2); // axe long -> Z (sens de nage)
   const maxDim = Math.max(size.x, size.y, size.z) || 1;
   geo.scale(1 / maxDim, 1 / maxDim, 1 / maxDim);
 

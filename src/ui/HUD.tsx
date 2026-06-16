@@ -1,65 +1,36 @@
-import { useGame, useGameSelector } from './GameContext';
-import { formatMoney, formatNumber } from '../core/numbers';
-import { currentTier, nextTier, progressToNextTier } from '../core/ProgressionFSM';
+import { useGameSelector } from './GameContext';
+import { formatMoney } from '../core/numbers';
 
-/** Bandeau supérieur : ressources, revenu/s et palier d'évolution courant. */
+/** Bandeau supérieur : ressources et état du parc. */
 export function HUD() {
-  const game = useGame();
-
   const money = useGameSelector((g) => formatMoney(g.state.money));
-  const research = useGameSelector((g) => formatNumber(g.state.research));
+  const appeal = useGameSelector((g) => Math.round(g.state.park.appeal));
+  const guests = useGameSelector((g) => g.state.park.guestsInPark);
+  const sat = useGameSelector((g) => Math.round(g.state.park.avgSatisfaction * 100));
+  const day = useGameSelector((g) => g.state.park.day);
   const bait = useGameSelector((g) => g.state.bait);
-  const revenue = useGameSelector((g) => formatMoney(g.revenuePerTick()));
-  const researchRate = useGameSelector((g) => formatNumber(g.researchPerTick()));
-
-  const tierName = useGameSelector((g) => currentTier(g.state).name);
-  const nextName = useGameSelector((g) => nextTier(g.state)?.name ?? null);
-  const tierPct = useGameSelector((g) => Math.round(progressToNextTier(g.state) * 100));
 
   return (
     <header className="hud">
       <div className="hud-resources">
-        <Resource icon="💰" label="Argent" value={money} sub={`${revenue}/s`} />
-        <Resource icon="🔬" label="Recherche" value={research} sub={`${researchRate}/s`} />
-        <Resource icon="🪱" label="Appâts" value={String(bait)} />
+        <Res icon="💰" value={money} label="Argent" />
+        <Res icon="✨" value={String(appeal)} label="Attrait" />
+        <Res icon="🧑‍🤝‍🧑" value={String(guests)} label="Visiteurs" />
+        <Res icon="😊" value={`${sat}%`} label="Satisfaction" />
+        <Res icon="🪱" value={String(bait)} label="Appâts" />
       </div>
-
-      <div className="hud-tier">
-        <div className="hud-tier-name">
-          <span className="hud-tier-badge">{game.state.progressionTier}</span>
-          {tierName}
-        </div>
-        {nextName && (
-          <div className="hud-tier-progress" title={`${tierPct}% vers ${nextName}`}>
-            <div className="hud-tier-bar" style={{ width: `${tierPct}%` }} />
-            <span className="hud-tier-next">→ {nextName}</span>
-          </div>
-        )}
-      </div>
+      <div className="hud-day">Jour {day}</div>
     </header>
   );
 }
 
-function Resource({
-  icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  sub?: string;
-}) {
+function Res({ icon, value, label }: { icon: string; value: string; label: string }) {
   return (
     <div className="resource">
       <span className="resource-icon">{icon}</span>
       <div className="resource-body">
         <span className="resource-value">{value}</span>
-        <span className="resource-label">
-          {label}
-          {sub && <em className="resource-sub"> · {sub}</em>}
-        </span>
+        <span className="resource-label">{label}</span>
       </div>
     </div>
   );
