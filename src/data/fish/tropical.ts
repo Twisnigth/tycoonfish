@@ -31,4 +31,17 @@ export const TROPICAL_FISH = [
     id: 'golden_arowana', name: 'Arowana Dorée', rarity: Rarity.Legendary, biome: 'tropical',
     revenueFactor: 1, temp: [26, 30], modelRef: 'fish.long', tint: 0xffd54f, scale: 1.6,
   }),
+  // --- Espèces récifales (modèles 3D Higgsfield dédiés) ---
+  defineFish({
+    id: 'blue_tang', name: 'Chirurgien Bleu', rarity: Rarity.Rare, biome: 'tropical',
+    revenueFactor: 1.3, temp: [24, 27], modelRef: 'fish.round', tint: 0x2563eb, scale: 1.0,
+  }),
+  defineFish({
+    id: 'yellow_tang', name: 'Chirurgien Jaune', rarity: Rarity.Rare, biome: 'tropical',
+    revenueFactor: 1.5, temp: [24, 27], modelRef: 'fish.round', tint: 0xfacc15, scale: 0.95,
+  }),
+  defineFish({
+    id: 'emperor_angelfish', name: 'Poisson-Empereur', rarity: Rarity.Epic, biome: 'tropical',
+    revenueFactor: 1.4, temp: [24, 28], modelRef: 'fish.exotic', tint: 0x1e88e5, scale: 1.15,
+  }),
 ];

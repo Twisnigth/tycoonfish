@@ -1,17 +1,17 @@
 import { useCallback, useRef, useState } from 'react';
 import { useGame } from './GameContext';
 import { HUD } from './HUD';
-import { ShopPanel } from './ShopPanel';
-import { ResearchPanel } from './ResearchPanel';
+import { BuildBar } from './BuildBar';
+import { ParkManagementPanel } from './ParkManagementPanel';
+import { BuildingInspector } from './BuildingInspector';
 import { FishingMinigame } from './FishingMinigame';
 import { FloatingTexts } from './FloatingTexts';
 import type { FishSpecies, Rarity } from '../data/types';
 
-/** Racine de l'overlay React. Le canvas 3D est DERRIÈRE (voir main.tsx). */
+/** Racine de l'overlay React (par-dessus le canvas 3D du parc). */
 export function App() {
   const game = useGame();
   const [activeSpecies, setActiveSpecies] = useState<FishSpecies | null>(null);
-  const [showResearch, setShowResearch] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef(0);
 
@@ -25,7 +25,7 @@ export function App() {
     (rarity: Rarity) => {
       const species = game.beginExpedition(rarity);
       if (!species) {
-        flash("Impossible : pas assez d'appâts ou aucune espèce capturable.");
+        flash("Pas assez d'appâts ou aucune espèce disponible.");
         return;
       }
       setActiveSpecies(species);
@@ -36,22 +36,13 @@ export function App() {
   return (
     <div className="overlay">
       <HUD />
-
-      <div className="side-controls">
-        <button className="btn btn-icon" onClick={() => setShowResearch(true)}>
-          🔬 Recherche
-        </button>
-      </div>
-
-      <ShopPanel onStartExpedition={startExpedition} />
-
+      <ParkManagementPanel onStartExpedition={startExpedition} />
+      <BuildingInspector />
+      <BuildBar />
       <FloatingTexts />
-
       {activeSpecies && (
         <FishingMinigame species={activeSpecies} onClose={() => setActiveSpecies(null)} />
       )}
-      {showResearch && <ResearchPanel onClose={() => setShowResearch(false)} />}
-
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

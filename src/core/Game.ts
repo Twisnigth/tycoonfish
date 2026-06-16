@@ -1,235 +1,246 @@
-import { Store } from './Store';
 import { Emitter } from './Emitter';
 import { Decimal, D } from './numbers';
+import { bumpStore, replaceState, useGameStore } from '../store/gameStore';
 import {
-  createInitialState,
   createTank,
-  volumeForLevel,
+  nextId,
   type GameState,
-  type TankState,
+  type PlacedBuilding,
 } from './GameState';
-import * as Economy from './EconomyEngine';
-import { checkProgression } from './ProgressionFSM';
+import { GridManager, Tile } from '../world/Grid';
+import { AgentSystem } from '../systems/AgentSystem';
+import { addIncome, economyTick, spawnRatePerSec } from './ParkEconomy';
 import {
-  BAIT_COST,
-  BAIT_PRICE,
-  TANK_UPGRADE_COST,
-  costAt,
-  type ProgressionTier,
-} from '../data/balance';
-import { getUpgrade } from '../data/upgrades';
-import { getResearch } from '../data/research';
-import { ALL_FISH } from '../data/fish';
-import type { BiomeId, FishSpecies, Rarity } from '../data/types';
-import type { CatchQuality } from '../systems/FishingSystem';
+  BUILDINGS,
+  DONATION_PER_APPEAL,
+  FOOD_PRICE,
+  type BuildingType,
+} from '../data/buildings';
+import { ALL_FISH, getFish } from '../data/fish';
+import { BAIT_COST, BAIT_PRICE, costAt } from '../data/balance';
+import type { FishSpecies, Rarity } from '../data/types';
 
 export interface GameEvents {
-  tierUp: ProgressionTier;
-  fishCaught: { species: FishSpecies; tankId: string; quality: CatchQuality };
-  income: { amount: Decimal; tankId?: string };
-  purchase: { kind: 'upgrade' | 'research' | 'tank' | 'bait' | 'expand'; id: string };
+  worldChanged: void;
+  tankUpdated: { buildingId: string };
+  fishCaught: { speciesId: string };
   [key: string]: unknown;
 }
 
+const PLOT_COST = { base: 2000, growth: 1.6 };
+
 /**
- * Contrôleur central. Détient la source de vérité (Store<GameState>) et expose
- * toutes les mutations de gameplay. La VUE 3D et l'UI React passent par lui ;
- * la logique pure (Economy, Progression) reste dans des modules séparés.
+ * Contrôleur central v2 (Park Builder). Détient la grille (`GridManager`) et la
+ * foule (`AgentSystem`) HORS de Zustand, et écrit le macro-état dans le store.
  */
 export class Game {
-  readonly store: Store<GameState>;
   readonly events = new Emitter<GameEvents>();
+  readonly grid = new GridManager();
+  readonly agents: AgentSystem;
+  private spawnAcc = 0;
 
   constructor(initial?: GameState) {
-    this.store = new Store(initial ?? createInitialState());
+    if (initial) replaceState(initial);
+    this.agents = new AgentSystem(this.grid, () => this.state.buildings, {
+      onDonate: (appeal) => addIncome(this.state, D(DONATION_PER_APPEAL).mul(appeal)),
+      onEat: () => addIncome(this.state, D(FOOD_PRICE)),
+      onLeave: (sat) => {
+        this.state.stats.guestsServed += 1;
+        const p = this.state.park;
+        p.guestsInPark = Math.max(0, p.guestsInPark - 1);
+        p.avgSatisfaction = p.avgSatisfaction * 0.95 + sat * 0.05;
+      },
+    });
+    this.rebuildWorld();
   }
 
   get state(): GameState {
-    return this.store.getState();
+    return useGameStore.getState();
   }
 
-  // ---- Boucle économique -------------------------------------------------
+  // ---- Monde (grille) ----------------------------------------------------
 
-  /** Avance l'économie de `ticks` ticks puis vérifie la progression. */
-  tick(ticks = 1): void {
-    const before = this.state.money;
-    Economy.tick(this.state, ticks);
-    const gained = this.state.money.sub(before);
-    if (gained.gt(0)) this.events.emit('income', { amount: gained });
-
-    for (const t of checkProgression(this.state)) {
-      this.events.emit('tierUp', t);
-    }
-    this.store.bump();
+  /** Reconstruit grille + champs depuis l'état (init / chargement). */
+  rebuildWorld(): void {
+    for (const packed of this.state.plots) this.grid.ownPlotByIndex(packed);
+    this.restampGrid();
+    this.agents.recompute();
   }
 
-  revenuePerTick(): Decimal {
-    return Economy.revenuePerTick(this.state);
-  }
-  researchPerTick(): Decimal {
-    return Economy.researchPerTick(this.state);
-  }
-
-  // ---- Achats ------------------------------------------------------------
-
-  private afford(cost: Decimal, pool: 'money' | 'research' = 'money'): boolean {
-    return this.state[pool].gte(cost);
-  }
-
-  upgradeCost(id: string): Decimal | null {
-    const u = getUpgrade(id);
-    if (!u) return null;
-    const level = this.state.upgrades[id] ?? 0;
-    return costAt(u.cost, level);
-  }
-
-  isUpgradeUnlocked(id: string): boolean {
-    const u = getUpgrade(id);
-    if (!u) return false;
-    return !u.requiresResearch || this.state.unlockedResearch.includes(u.requiresResearch);
-  }
-
-  buyUpgrade(id: string): boolean {
-    const u = getUpgrade(id);
-    if (!u || !this.isUpgradeUnlocked(id)) return false;
-    const level = this.state.upgrades[id] ?? 0;
-    if (u.maxLevel > 0 && level >= u.maxLevel) return false;
-    const cost = costAt(u.cost, level);
-    if (!this.afford(cost)) return false;
-
-    this.state.money = this.state.money.sub(cost);
-    this.state.upgrades[id] = level + 1;
-    this.events.emit('purchase', { kind: 'upgrade', id });
-    this.store.bump();
-    return true;
-  }
-
-  canBuyResearch(id: string): boolean {
-    const r = getResearch(id);
-    if (!r) return false;
-    if (this.state.unlockedResearch.includes(id)) return false;
-    if (!r.requires.every((req) => this.state.unlockedResearch.includes(req))) return false;
-    return this.afford(D(r.cost), 'research');
-  }
-
-  buyResearch(id: string): boolean {
-    const r = getResearch(id);
-    if (!r || !this.canBuyResearch(id)) return false;
-
-    this.state.research = this.state.research.sub(D(r.cost));
-    this.state.unlockedResearch.push(id);
-    for (const e of r.effects) {
-      if (e.type === 'unlockBiome' && !this.state.unlockedBiomes.includes(e.biome)) {
-        this.state.unlockedBiomes.push(e.biome);
+  /** Réécrit l'occupation de la grille depuis `buildings` (préserve `owned`). */
+  private restampGrid(): void {
+    this.grid.tile.fill(Tile.Empty);
+    this.grid.occupant.fill(-1);
+    this.state.buildings.forEach((b, idx) => {
+      const def = BUILDINGS[b.type];
+      if (b.type === 'path') {
+        const i = this.grid.idx(b.gx, b.gy);
+        this.grid.tile[i] = Tile.Path;
+        this.grid.occupant[i] = idx;
+      } else {
+        this.grid.place(b.gx, b.gy, def.w, def.h, idx, Tile.Building);
       }
+    });
+  }
+
+  // ---- Construction ------------------------------------------------------
+
+  isUnlocked(type: BuildingType): boolean {
+    const req = BUILDINGS[type].requiresResearch;
+    return !req || this.state.unlockedResearch.includes(req);
+  }
+
+  canPlace(type: BuildingType, gx: number, gy: number): boolean {
+    const def = BUILDINGS[type];
+    if (!this.isUnlocked(type)) return false;
+    return this.grid.canPlace(gx, gy, def.w, def.h);
+  }
+
+  placeBuilding(type: BuildingType, gx: number, gy: number): boolean {
+    const def = BUILDINGS[type];
+    if (!this.canPlace(type, gx, gy)) return false;
+    const cost = D(def.cost);
+    if (this.state.money.lt(cost)) return false;
+
+    this.state.money = this.state.money.sub(cost);
+    const b: PlacedBuilding = { id: nextId('b'), type, gx, gy, rot: 0 };
+    if (def.render.kind === 'tank') {
+      const vol = def.w * def.h * 6;
+      b.tank = createTank(def.render.biome, vol, def.render.temp);
     }
-    this.events.emit('purchase', { kind: 'research', id });
-    this.store.bump();
+    const idx = this.state.buildings.push(b) - 1;
+    if (type === 'path') {
+      const i = this.grid.idx(gx, gy);
+      this.grid.tile[i] = Tile.Path;
+      this.grid.occupant[i] = idx;
+    } else {
+      this.grid.place(gx, gy, def.w, def.h, idx, Tile.Building);
+    }
+    this.agents.recompute();
+    this.events.emit('worldChanged', undefined);
+    bumpStore();
     return true;
   }
 
-  // ---- Bacs --------------------------------------------------------------
-
-  expandCost(tankId: string): Decimal | null {
-    const tank = this.state.tanks.find((t) => t.id === tankId);
-    if (!tank) return null;
-    return costAt(TANK_UPGRADE_COST, tank.level);
-  }
-
-  expandTank(tankId: string): boolean {
-    const tank = this.state.tanks.find((t) => t.id === tankId);
-    if (!tank) return false;
-    const cost = costAt(TANK_UPGRADE_COST, tank.level);
-    if (!this.afford(cost)) return false;
-
-    this.state.money = this.state.money.sub(cost);
-    tank.level += 1;
-    tank.volume = volumeForLevel(tank.level);
-    this.events.emit('purchase', { kind: 'expand', id: tankId });
-    this.store.bump();
+  /** Supprime le bâtiment couvrant la case (sauf l'entrée). */
+  removeBuildingAt(gx: number, gy: number): boolean {
+    if (!this.grid.inBounds(gx, gy)) return false;
+    const idx = this.grid.occupant[this.grid.idx(gx, gy)];
+    if (idx < 0) return false;
+    const b = this.state.buildings[idx];
+    if (!b || b.type === 'entrance') return false;
+    this.state.buildings.splice(idx, 1);
+    this.restampGrid(); // réindexe les occupants
+    this.agents.recompute();
+    this.events.emit('worldChanged', undefined);
+    bumpStore();
     return true;
   }
 
-  /** Crée un nouveau bac pour un biome débloqué (coût croissant avec le nombre de bacs). */
-  buildTank(biome: BiomeId, name: string): TankState | null {
-    if (!this.state.unlockedBiomes.includes(biome)) return null;
-    const cost = costAt({ base: 1_000, growth: 2 }, this.state.tanks.length - 1);
-    if (!this.afford(cost)) return null;
-
-    this.state.money = this.state.money.sub(cost);
-    const tank = createTank(`tank-${this.state.tanks.length}`, name, biome);
-    this.state.tanks.push(tank);
-    this.events.emit('purchase', { kind: 'tank', id: tank.id });
-    this.store.bump();
-    return tank;
+  buildingAt(gx: number, gy: number): PlacedBuilding | undefined {
+    if (!this.grid.inBounds(gx, gy)) return undefined;
+    const idx = this.grid.occupant[this.grid.idx(gx, gy)];
+    return idx >= 0 ? this.state.buildings[idx] : undefined;
   }
 
-  // ---- Appâts & Pêche ----------------------------------------------------
+  // ---- Parcelles ---------------------------------------------------------
+
+  plotCost(): Decimal {
+    return costAt(PLOT_COST, this.state.plots.length);
+  }
+
+  buyPlotAt(gx: number, gy: number): boolean {
+    if (!this.grid.inBounds(gx, gy) || this.grid.isOwned(gx, gy)) return false;
+    const cost = this.plotCost();
+    if (this.state.money.lt(cost)) return false;
+    this.state.money = this.state.money.sub(cost);
+    this.grid.ownPlotAt(gx, gy);
+    this.state.plots.push(this.grid.plotOriginIndex(gx, gy));
+    this.events.emit('worldChanged', undefined);
+    bumpStore();
+    return true;
+  }
+
+  // ---- Parc / pêche ------------------------------------------------------
+
+  setTicketPrice(p: number): void {
+    this.state.park.ticketPrice = Math.max(0, Math.round(p));
+    bumpStore();
+  }
 
   buyBait(amount: number): boolean {
     const cost = D(BAIT_PRICE).mul(amount);
-    if (!this.afford(cost)) return false;
+    if (this.state.money.lt(cost)) return false;
     this.state.money = this.state.money.sub(cost);
     this.state.bait += amount;
-    this.events.emit('purchase', { kind: 'bait', id: String(amount) });
-    this.store.bump();
+    bumpStore();
     return true;
   }
 
-  /** Premier bac compatible avec les exigences d'une espèce (biome/temp/volume). */
-  compatibleTank(species: FishSpecies): TankState | undefined {
-    const req = species.requirements;
-    return this.state.tanks.find(
-      (t) =>
-        t.biome === req.biome &&
-        t.waterTemp >= req.minTemp &&
-        t.waterTemp <= req.maxTemp &&
-        t.volume >= req.minVolume,
-    );
-  }
-
-  /** Espèces d'une rareté actuellement capturables (biome débloqué + bac compatible). */
   catchableSpecies(rarity: Rarity): FishSpecies[] {
     return ALL_FISH.filter(
-      (f) =>
-        f.rarity === rarity &&
-        this.state.unlockedBiomes.includes(f.requirements.biome) &&
-        this.compatibleTank(f) !== undefined,
+      (f) => f.rarity === rarity && this.state.unlockedBiomes.includes(f.requirements.biome),
     );
   }
 
-  /**
-   * Démarre une expédition : consomme les appâts et tire une espèce cible.
-   * Retourne l'espèce à pêcher (à passer à une FishingSession) ou null si
-   * impossible (pas assez d'appâts / aucune espèce capturable).
-   */
   beginExpedition(rarity: Rarity): FishSpecies | null {
     const cost = BAIT_COST[rarity];
     if (this.state.bait < cost) return null;
     const pool = this.catchableSpecies(rarity);
     if (pool.length === 0) return null;
-
     this.state.bait -= cost;
-    const species = pool[Math.floor(Math.random() * pool.length)];
-    this.store.bump();
-    return species;
+    bumpStore();
+    return pool[(Math.random() * pool.length) | 0];
   }
 
-  /** Résout une capture réussie : ajoute le poisson + bonus de qualité immédiat. */
-  resolveCatch(species: FishSpecies, quality: CatchQuality, qualityBonus: number): void {
-    const tank = this.compatibleTank(species);
-    if (!tank) return;
-
-    tank.fish[species.id] = (tank.fish[species.id] ?? 0) + 1;
+  /** Capture réussie → le poisson va dans l'inventaire (à affecter à un bac). */
+  resolveCatch(species: FishSpecies): void {
+    this.state.caughtInventory[species.id] = (this.state.caughtInventory[species.id] ?? 0) + 1;
     this.state.stats.fishCaught += 1;
+    this.events.emit('fishCaught', { speciesId: species.id });
+    bumpStore();
+  }
 
-    // Récompense de skill : ~1 min de revenu de l'espèce, modulée par la qualité.
-    const bonus = D(species.baseRevenuePerTick).mul(60).mul(qualityBonus);
-    this.state.money = this.state.money.add(bonus);
-    this.state.totalEarned = this.state.totalEarned.add(bonus);
+  /** Affecte un poisson de l'inventaire à un bac compatible. */
+  assignFish(buildingId: string, speciesId: string): boolean {
+    if ((this.state.caughtInventory[speciesId] ?? 0) <= 0) return false;
+    const b = this.state.buildings.find((x) => x.id === buildingId);
+    const sp = getFish(speciesId);
+    if (!b || !b.tank || !sp) return false;
+    const r = sp.requirements;
+    if (b.tank.biome !== r.biome) return false;
+    if (b.tank.waterTemp < r.minTemp || b.tank.waterTemp > r.maxTemp) return false;
+    if (b.tank.volume < r.minVolume) return false;
 
-    this.events.emit('fishCaught', { species, tankId: tank.id, quality });
-    this.events.emit('income', { amount: bonus, tankId: tank.id });
-    this.store.bump();
+    this.state.caughtInventory[speciesId] -= 1;
+    b.tank.fish[speciesId] = (b.tank.fish[speciesId] ?? 0) + 1;
+    this.events.emit('tankUpdated', { buildingId });
+    bumpStore();
+    return true;
+  }
+
+  // ---- Boucles -----------------------------------------------------------
+
+  /** Tick logique 1 Hz : économie + jour + push UI. */
+  tick(): void {
+    economyTick(this.state, 1);
+    bumpStore();
+  }
+
+  /** Simulation foule (appelée à la fréquence du rendu). */
+  simulateAgents(dt: number): void {
+    this.spawnAcc += spawnRatePerSec(this.state) * dt;
+    while (this.spawnAcc >= 1) {
+      this.spawnAcc -= 1;
+      if (this.agents.spawnReady) {
+        const before = this.agents.count;
+        this.agents.spawn();
+        if (this.agents.count > before) {
+          addIncome(this.state, D(this.state.park.ticketPrice)); // billet à l'entrée
+          this.state.park.guestsInPark += 1;
+        }
+      }
+    }
+    this.agents.update(dt);
   }
 }

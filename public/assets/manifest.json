@@ -1,9 +1,10 @@
 {
-  "_comment": "Carte d'intégration des assets Higgsfield → entités du jeu. Les GLB sont texturés (image→3D Meshy). Les personnages sont riggés + animés (idle). Les poissons/décors sont statiques (animés en jeu par le BoidSystem / tweens). Source images conservées dans /assets/sources si besoin de reconversion.",
+  "_comment": "Carte d'intégration des assets Higgsfield → entités du jeu. GLB texturés (image→3D Meshy), compressés (quantize + WebP 512, natifs Three). Personnages riggés + animés idle. Poissons/décors/bâtiments statiques (animés en jeu).",
   "scene_render": "assets/renders/complex_scene.png",
   "characters": {
-    "curator": { "glb": "assets/models/curator.glb", "rigged": true, "animation": "idle", "pose": "a-pose" },
-    "visitor": { "glb": "assets/models/visitor.glb", "rigged": true, "animation": "idle", "pose": "a-pose" }
+    "curator": { "glb": "assets/models/curator.glb", "rigged": true, "animation": "idle" },
+    "visitor": { "glb": "assets/models/visitor.glb", "rigged": true, "animation": "idle" },
+    "aquarist": { "glb": "assets/models/aquarist.glb", "rigged": true, "animation": "idle" }
   },
   "fish": {
     "guppy": "assets/models/fish_guppy.glb",
@@ -17,13 +18,26 @@
     "koi": "assets/models/fish_koi.glb",
     "arctic_char": "assets/models/fish_arctic_char.glb",
     "frostfin": "assets/models/fish_frostfin.glb",
-    "leviathan_eel": "assets/models/fish_leviathan_eel.glb"
+    "leviathan_eel": "assets/models/fish_leviathan_eel.glb",
+    "blue_tang": "assets/models/fish_blue_tang.glb",
+    "yellow_tang": "assets/models/fish_yellow_tang.glb",
+    "emperor_angelfish": "assets/models/fish_emperor_angelfish.glb"
+  },
+  "buildings": {
+    "entrance": "assets/models/building_entrance.glb",
+    "food": "assets/models/building_food.glb",
+    "restroom": "assets/models/building_restroom.glb",
+    "giftshop": "assets/models/building_giftshop.glb"
   },
   "decor": {
     "coral": "assets/models/decor_coral.glb",
     "kelp": "assets/models/decor_kelp.glb",
     "rock": "assets/models/decor_rock.glb",
     "treasure_chest": "assets/models/decor_treasure_chest.glb",
-    "filter_pump": "assets/models/decor_filter_pump.glb"
+    "filter_pump": "assets/models/decor_filter_pump.glb",
+    "bench": "assets/models/decor_bench.glb",
+    "tree": "assets/models/decor_tree.glb",
+    "lamp": "assets/models/decor_lamp.glb",
+    "bin": "assets/models/decor_bin.glb"
   }
 }

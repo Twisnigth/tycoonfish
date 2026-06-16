@@ -1,12 +1,14 @@
-import {
-  createContext,
-  useContext,
-  useRef,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { Game } from '../core/Game';
+import { useGameStore } from '../store/gameStore';
 
+/**
+ * Le contexte fournit le contrôleur `Game` (pour les ACTIONS). Les LECTURES
+ * réactives passent par le store Zustand via `useGameSelector` : le sélecteur
+ * est ré-évalué à chaque notification (`bumpStore`), et React ne re-render que
+ * si la valeur retournée change (comparaison Object.is). Les sélecteurs doivent
+ * donc retourner des primitives (string/number/bool).
+ */
 const GameCtx = createContext<Game | null>(null);
 
 export function GameProvider({ game, children }: { game: Game; children: ReactNode }) {
@@ -19,37 +21,13 @@ export function useGame(): Game {
   return g;
 }
 
-/**
- * Pont Store → React via l'API dédiée `useSyncExternalStore`. Le sélecteur DOIT
- * renvoyer une valeur primitive (string/number/bool) : on met en cache la
- * dernière valeur et on ne re-render que si elle change réellement. Ainsi le
- * tick à 1 Hz ne provoque un rendu React que lorsque l'affichage change
- * vraiment — et jamais à la fréquence du rendu 3D.
- */
-export function useGameSelector<R>(
-  selector: (g: Game) => R,
-  isEqual: (a: R, b: R) => boolean = Object.is,
-): R {
+/** Lecture réactive dérivée du contrôleur `Game`, re-render uniquement au changement. */
+export function useGameSelector<R>(selector: (g: Game) => R): R {
   const game = useGame();
-  const lastRef = useRef<{ value: R } | null>(null);
-
-  const getSnapshot = (): R => {
-    const next = selector(game);
-    const last = lastRef.current;
-    if (last && isEqual(last.value, next)) return last.value;
-    lastRef.current = { value: next };
-    return next;
-  };
-
-  return useSyncExternalStore(game.store.subscribe, getSnapshot, getSnapshot);
+  return useGameStore(() => selector(game));
 }
 
-/**
- * S'abonne à TOUT changement d'état (retourne la version du store). Pratique
- * pour les panneaux riches (boutique, recherche) qui dérivent de nombreuses
- * valeurs : on relit `game.state` directement après ce hook. À réserver aux
- * vues peu fréquentes — le HUD, lui, utilise des sélecteurs granulaires.
- */
+/** S'abonne à tout changement d'état (version du store). Pour les panneaux riches. */
 export function useGameVersion(): number {
-  return useGameSelector((g) => g.store.version);
+  return useGameStore((s) => s._v);
 }

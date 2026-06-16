@@ -28,7 +28,7 @@ export class GameLoop {
     this.running = true;
 
     this.intervalId = window.setInterval(() => {
-      this.game.tick(1);
+      this.game.tick();
       this.game.state.stats.playtimeMs += TICK_MS;
     }, TICK_MS);
 

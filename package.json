@@ -15,7 +15,8 @@
     "idb": "^8.0.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@gltf-transform/cli": "^4.4.0",
