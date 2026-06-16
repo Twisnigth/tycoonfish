@@ -3,7 +3,10 @@ import type { TankState } from '../core/GameState';
 import { getFish } from '../data/fish';
 import { getFishGeometry } from './MeshRegistry';
 import { createWaterMaterial } from './WaterMaterial';
-import { decorModelUrl, fishModelUrl, loadInstanceParts, loadObject } from './AssetLoader';
+import { decorModelUrl, fishModelUrl, loadFishHero, loadInstanceParts, loadObject } from './AssetLoader';
+import { biomeWaterColor } from '../data/biomes';
+import { tankDecorModel } from '../data/tankDecor';
+import { GRID } from '../world/Grid';
 
 /** Facteur d'échelle global des poissons GLB (normalisés en unité). */
 const FISH_RENDER_SCALE = 0.7;
@@ -17,12 +20,31 @@ interface Agent {
   scale: number;
   color: THREE.Color;
   speciesId: string;
+  phase: number; // déphasage pour l'animation de nage
 }
+
+/** Grosse créature rendue comme objet individuel (GLB animé), hors InstancedMesh. */
+interface Hero {
+  fishId: string;
+  speciesId: string;
+  root: THREE.Object3D | null;
+  mixer: THREE.AnimationMixer | null;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  phase: number;
+}
+
+/** Une créature est « vedette » (rendu individuel animé) à partir de cette classe de taille. */
+const HERO_SIZE_CLASS = 3;
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
+const _swish = new THREE.Quaternion();
+const _up = new THREE.Vector3(0, 1, 0);
+const _roll = new THREE.Vector3(0, 0, 1);
 const _fwd = new THREE.Vector3(0, 0, 1);
 const _scale = new THREE.Vector3();
+const _posTmp = new THREE.Vector3();
 
 /**
  * Représentation 3D d'un bac. Détient le verre, l'eau (shader), le sol, les
@@ -47,20 +69,67 @@ export class TankView {
   private builtVolume = 0;
   /** Éléments statiques (verre/eau/sol/bulles) — disposables au rebuild. */
   private statics: THREE.Object3D[] = [];
+  /** Décors 3D placés par le joueur à l'intérieur du bac. */
+  private decorObjs: THREE.Object3D[] = [];
+  private decorKey = '';
+  /** Grosses créatures rendues individuellement (GLB animé). */
+  private heroes: Hero[] = [];
+  private heroKey = '';
 
-  constructor(private tank: TankState) {
-    this.water = createWaterMaterial(0x3fa9c9);
+  constructor(
+    private tank: TankState,
+    private footW = 2,
+    private footH = 2,
+  ) {
+    this.water = createWaterMaterial(biomeWaterColor(tank.biome));
     this.bubbleVel = new Float32Array(0);
     this.build();
     this.syncSchool();
+    this.syncHeroes();
     void this.addDecor();
+    void this.syncPlayerDecor();
+  }
+
+  private isHero(species: string): boolean {
+    return (getFish(species)?.sizeClass ?? 1) >= HERO_SIZE_CLASS;
+  }
+
+  /** (Re)construit les décors intérieurs placés par le joueur (tank.decor). */
+  private async syncPlayerDecor(): Promise<void> {
+    const key = this.tank.decor.join('|');
+    if (key === this.decorKey) return;
+    this.decorKey = key;
+
+    for (const o of this.decorObjs) this.group.remove(o);
+    this.decorObjs = [];
+
+    const s = this.size();
+    const floorY = -s.y / 2 + 0.1;
+    const builtAt = this.builtVolume;
+    const list = [...this.tank.decor];
+    for (let i = 0; i < list.length; i++) {
+      const angle = (i / Math.max(1, list.length)) * Math.PI * 2;
+      const r = Math.min(s.x, s.z) * 0.3;
+      const obj = await loadObject(decorModelUrl(tankDecorModel(list[i])), Math.min(s.y * 0.45, 1.1));
+      // Bac reconstruit / décor changé entre-temps → on abandonne ce chargement.
+      if (!obj || this.builtVolume !== builtAt || this.decorKey !== key) continue;
+      obj.position.set(Math.cos(angle) * r, floorY, Math.sin(angle) * r);
+      obj.rotation.y = Math.random() * Math.PI * 2;
+      obj.renderOrder = 1;
+      this.decorObjs.push(obj);
+      this.group.add(obj);
+    }
   }
 
   /** Place quelques décors GLB au sol du bac (selon le biome). */
   private async addDecor(): Promise<void> {
     const s = this.size();
     const floorY = -s.y / 2 + 0.09;
-    const picks = this.tank.biome === 'coldwater' ? ['kelp', 'rock'] : ['coral', 'rock'];
+    const byBiome: Record<string, string[]> = {
+      coldwater: ['kelp', 'rock'], deepsea: ['rock', 'kelp'], abyssal: ['rock', 'rock'],
+      reef: ['coral', 'coral'], mythic: ['coral', 'rock'], tropical: ['coral', 'rock'],
+    };
+    const picks = byBiome[this.tank.biome] ?? ['coral', 'rock'];
     const spots = [
       new THREE.Vector3(-s.x * 0.28, floorY, s.z * 0.2),
       new THREE.Vector3(s.x * 0.3, floorY, -s.z * 0.18),
@@ -76,9 +145,17 @@ export class TankView {
     }
   }
 
+  /** Taille du bac calée sur son EMPRISE réelle (un 4×4 mythique est vraiment grand). */
   private size(): THREE.Vector3 {
-    const side = Math.cbrt(this.tank.volume) * 1.05;
-    return new THREE.Vector3(side, side * 0.82, side);
+    const w = this.footW * GRID.cell * 0.94;
+    const d = this.footH * GRID.cell * 0.94;
+    const h = Math.max(2.4, Math.min(w, d) * 0.85);
+    return new THREE.Vector3(w, h, d);
+  }
+
+  /** Hauteur à laquelle poser le groupe pour que le fond touche le sol. */
+  get groundY(): number {
+    return this.size().y / 2;
   }
 
   private build(): void {
@@ -140,15 +217,16 @@ export class TankView {
     this.statics.push(this.bubbles);
   }
 
-  /** Signature de population : change dès qu'un poisson est ajouté/retiré. */
+  /** Signature de population (petits poissons uniquement) : change à tout ajout/retrait. */
   private computePopKey(): string {
     return this.tank.fish
+      .filter((f) => !this.isHero(f.species))
       .map((f) => f.species)
       .sort()
       .join('|');
   }
 
-  /** (Re)construit le banc rendu — STRICTEMENT 1:1 (un poisson = une instance). */
+  /** (Re)construit le banc rendu — STRICTEMENT 1:1 (un poisson = une instance). Petits poissons seulement. */
   syncSchool(): void {
     const key = this.computePopKey();
     if (key === this.popKey) return;
@@ -156,11 +234,13 @@ export class TankView {
 
     this.agents = [];
     for (const fish of this.tank.fish) {
+      if (this.isHero(fish.species)) continue; // les grosses créatures = rendu individuel
       const sp = getFish(fish.species);
       if (!sp) continue;
       this.agents.push({
         archetype: sp.modelRef,
         speciesId: fish.species,
+        phase: Math.random() * Math.PI * 2,
         scale: sp.scale * FISH_RENDER_SCALE * fish.genes.size * (0.85 + Math.random() * 0.3),
         color: new THREE.Color(sp.tint),
         pos: new THREE.Vector3(
@@ -217,6 +297,59 @@ export class TankView {
     }
   }
 
+  /** (Re)construit les grosses créatures : un objet GLB individuel (animé) chacune. */
+  private syncHeroes(): void {
+    const heroFish = this.tank.fish.filter((f) => this.isHero(f.species));
+    const key = heroFish.map((f) => f.id).sort().join('|');
+    if (key === this.heroKey) return;
+    this.heroKey = key;
+
+    for (const h of this.heroes) {
+      if (h.root) this.group.remove(h.root);
+      h.mixer?.stopAllAction();
+    }
+    this.heroes = [];
+
+    const s = this.size();
+    const innerMin = Math.min(s.x, s.z) - WALL_MARGIN * 2;
+    for (const fish of heroFish) {
+      const sp = getFish(fish.species);
+      if (!sp) continue;
+      const targetSize = Math.min(sp.scale * fish.genes.size * 1.7, innerMin * 0.78);
+      const hero: Hero = {
+        fishId: fish.id,
+        speciesId: fish.species,
+        root: null,
+        mixer: null,
+        phase: Math.random() * Math.PI * 2,
+        pos: new THREE.Vector3(
+          (Math.random() - 0.5) * this.inner.x * 0.5,
+          (Math.random() - 0.5) * this.inner.y * 0.4,
+          (Math.random() - 0.5) * this.inner.z * 0.5,
+        ),
+        vel: new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(0.32),
+      };
+      this.heroes.push(hero);
+      const builtAt = this.builtVolume;
+      void loadFishHero(fishModelUrl(fish.species), targetSize).then((fh) => {
+        if (this.heroKey !== key || this.builtVolume !== builtAt) return; // bac/population changé
+        if (fh) {
+          hero.root = fh.root;
+          hero.mixer = fh.mixer;
+        } else {
+          // Pas de GLB → mesh procédural unique teinté, dimensionné comme la vedette.
+          const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(sp.tint), flatShading: true });
+          const mesh = new THREE.Mesh(getFishGeometry(sp.modelRef), mat);
+          mesh.scale.setScalar(targetSize);
+          mesh.castShadow = true;
+          hero.root = mesh;
+        }
+        hero.root.position.copy(hero.pos);
+        this.group.add(hero.root);
+      });
+    }
+  }
+
   /** Déclenche l'animation de transition (scale bounce) lors d'un palier. */
   triggerBounce(): void {
     this.bounce = 1;
@@ -250,11 +383,47 @@ export class TankView {
         if (a.vel.lengthSq() > 1e-4) {
           _q.setFromUnitVectors(_fwd, a.vel.clone().normalize());
         }
-        _scale.setScalar(a.scale);
-        _m.compose(a.pos, _q, _scale);
+        // Animation de nage : frétillement (lacet) + roulis + respiration + ondulation.
+        const t2 = time + a.phase;
+        _swish.setFromAxisAngle(_up, Math.sin(t2 * 6) * 0.22);
+        _q.multiply(_swish);
+        _swish.setFromAxisAngle(_roll, Math.sin(t2 * 4) * 0.12);
+        _q.multiply(_swish);
+        const breathe = a.scale * (1 + Math.sin(t2 * 3) * 0.05);
+        _scale.set(breathe, breathe, breathe);
+        _posTmp.copy(a.pos);
+        _posTmp.y += Math.sin(t2 * 2) * 0.06 * a.scale;
+        _m.compose(_posTmp, _q, _scale);
         mesh.setMatrixAt(i, _m);
       }
       mesh.instanceMatrix.needsUpdate = true;
+    }
+
+    // Grosses créatures (objets individuels) : nage lente + animation.
+    for (const h of this.heroes) {
+      if (!h.root) continue;
+      h.vel.x += (Math.random() - 0.5) * dt * 0.5;
+      h.vel.y += (Math.random() - 0.5) * dt * 0.15;
+      h.vel.z += (Math.random() - 0.5) * dt * 0.5;
+      if (Math.abs(h.pos.x) > half.x) h.vel.x -= Math.sign(h.pos.x) * dt * 2;
+      if (Math.abs(h.pos.y) > half.y * 0.6) h.vel.y -= Math.sign(h.pos.y) * dt * 2;
+      if (Math.abs(h.pos.z) > half.z) h.vel.z -= Math.sign(h.pos.z) * dt * 2;
+      const hs = h.vel.length();
+      if (hs > 0.55) h.vel.multiplyScalar(0.55 / hs);
+      h.pos.addScaledVector(h.vel, dt);
+      h.root.position.copy(h.pos);
+      if (h.vel.lengthSq() > 1e-4) {
+        h.root.quaternion.setFromUnitVectors(_fwd, _posTmp.copy(h.vel).normalize());
+      }
+      if (h.mixer) {
+        h.mixer.update(dt); // animation squelettique du GLB (léviathan & co)
+      } else {
+        // Pas de clip : ondulation procédurale pour donner vie (kraken).
+        const t2 = time + h.phase;
+        _swish.setFromAxisAngle(_up, Math.sin(t2 * 2.5) * 0.16);
+        h.root.quaternion.multiply(_swish);
+        h.root.position.y += Math.sin(t2 * 1.5) * 0.12;
+      }
     }
 
     // Bulles montantes.
@@ -282,16 +451,23 @@ export class TankView {
       // Le bac a grandi : on reconstruit la géométrie statique + le banc.
       this.build();
       this.popKey = ''; // force la reconstruction du banc
+      this.heroKey = ''; // force la reconstruction des vedettes
+      this.decorKey = ''; // force la reconstruction des décors
       this.syncSchool();
+      this.syncHeroes();
       void this.addDecor();
+      void this.syncPlayerDecor();
       this.triggerBounce();
       return;
     }
     this.syncSchool();
+    this.syncHeroes();
+    void this.syncPlayerDecor();
   }
 
   dispose(): void {
     for (const mesh of this.meshes.values()) mesh.dispose();
+    for (const h of this.heroes) { if (h.root) this.group.remove(h.root); h.mixer?.stopAllAction(); }
     this.water.dispose();
     this.bubbles.geometry.dispose();
     (this.bubbles.material as THREE.Material).dispose();

@@ -87,51 +87,13 @@ export interface FishSpecies {
   predator: boolean;
   /** Classe de taille 1 (petit) .. 3 (grand) — prédation & compatibilité. */
   sizeClass: number;
-}
-
-/** Catégorie d'amélioration de boutique. */
-export type UpgradeKind = 'filter' | 'pump' | 'food' | 'decoration' | 'heater';
-
-export interface Upgrade {
-  id: string;
-  name: string;
-  description: string;
-  kind: UpgradeKind;
-  /** Courbe de coût géométrique : base · growth^niveau. */
-  cost: { base: DecimalSource; growth: number };
-  /** Niveau maximum (0 = illimité). */
-  maxLevel: number;
-  /** Bonus multiplicatif au revenu global par niveau (ex 0.05 = +5%/niveau). */
-  revenueMultPerLevel: number;
-  /** Recherche débloquante (optionnel). */
-  requiresResearch?: string;
-}
-
-export interface ResearchNode {
-  id: string;
-  name: string;
-  description: string;
-  cost: DecimalSource; // en Points de Recherche
-  /** Prérequis (autres nœuds). */
-  requires: string[];
-  /** Effets déclaratifs appliqués à l'achat. */
-  effects: ResearchEffect[];
-  /** Position dans l'arbre (pour l'UI). */
-  position: { x: number; y: number };
-}
-
-export type ResearchEffect =
-  | { type: 'unlockBiome'; biome: BiomeId }
-  | { type: 'unlockUpgrade'; upgradeId: string }
-  | { type: 'globalRevenueMult'; value: number }
-  | { type: 'researchRateMult'; value: number }
-  | { type: 'unlockTank'; tankTemplate: string };
-
-export interface Biome {
-  id: BiomeId;
-  name: string;
-  description: string;
-  baseTemp: number;
-  /** Couleur d'eau (flat). */
-  waterColor: number;
+  // ---- Bien-être / habitat (M7) ----
+  /** Température idéale (°C) — au centre de la plage tolérée. */
+  idealTemp: number;
+  /** Volume requis par individu (espace vital). */
+  spacePerFish: number;
+  /** Taille de groupe minimale de la MÊME espèce pour le confort (banc). */
+  socialMin: number;
+  /** Agressif : stresse les co-occupants plus petits (au-delà de la prédation). */
+  aggressive: boolean;
 }

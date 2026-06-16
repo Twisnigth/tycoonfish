@@ -1,11 +1,19 @@
 import type { BiomeId, FishSpecies, Rarity } from '../types';
 import { TROPICAL_FISH } from './tropical';
 import { COLDWATER_FISH } from './coldwater';
+import { REEF_FISH } from './reef';
+import { DEEPSEA_FISH } from './deepsea';
+import { ABYSSAL_FISH } from './abyssal';
+import { MYTHIC_FISH } from './mythic';
 
 /** Registre global de toutes les espèces, tous biomes confondus. */
 export const ALL_FISH: FishSpecies[] = [
   ...TROPICAL_FISH,
   ...COLDWATER_FISH,
+  ...REEF_FISH,
+  ...DEEPSEA_FISH,
+  ...ABYSSAL_FISH,
+  ...MYTHIC_FISH,
 ];
 
 const BY_ID = new Map<string, FishSpecies>(ALL_FISH.map((f) => [f.id, f]));

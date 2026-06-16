@@ -37,11 +37,19 @@ export interface FishDef {
   predator?: boolean;
   /** Classe de taille 1..3. Défaut déduit de `scale`. */
   sizeClass?: number;
+  /** Espèce grégaire (banc) — a besoin de congénères. Défaut false. */
+  school?: boolean;
+  /** Agressif envers les co-occupants plus petits. Défaut = predator. */
+  aggressive?: boolean;
 }
+
+/** Espace vital requis par individu, selon la classe de taille. */
+const SPACE_BY_SIZE: Record<number, number> = { 1: 2, 2: 6, 3: 14 };
 
 export function defineFish(def: FishDef): FishSpecies {
   const profile = RARITY_PROFILE[def.rarity];
   const [minTemp, maxTemp] = def.temp ?? [18, 28];
+  const sizeClass = def.sizeClass ?? sizeFromScale(def.scale ?? 1);
 
   return {
     id: def.id,
@@ -59,7 +67,11 @@ export function defineFish(def: FishDef): FishSpecies {
     tint: def.tint ?? RARITY_COLOR[def.rarity],
     scale: def.scale ?? 1,
     predator: def.predator ?? false,
-    sizeClass: def.sizeClass ?? sizeFromScale(def.scale ?? 1),
+    sizeClass,
+    idealTemp: Math.round((minTemp + maxTemp) / 2),
+    spacePerFish: SPACE_BY_SIZE[sizeClass] ?? 6,
+    socialMin: def.school ? 4 : sizeClass === 1 ? 2 : 1,
+    aggressive: def.aggressive ?? def.predator ?? false,
   };
 }
 

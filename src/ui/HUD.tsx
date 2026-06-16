@@ -9,6 +9,7 @@ export function HUD() {
   const sat = useGameSelector((g) => Math.round(g.state.park.avgSatisfaction * 100));
   const day = useGameSelector((g) => g.state.park.day);
   const bait = useGameSelector((g) => g.state.bait);
+  const researching = useGameSelector((g) => (g.state.activeResearch ? Math.round(g.researchProgress() * 100) : -1));
 
   return (
     <header className="hud">
@@ -18,6 +19,7 @@ export function HUD() {
         <Res icon="🧑‍🤝‍🧑" value={String(guests)} label="Visiteurs" />
         <Res icon="😊" value={`${sat}%`} label="Satisfaction" />
         <Res icon="🪱" value={String(bait)} label="Appâts" />
+        {researching >= 0 && <Res icon="🔬" value={`${researching}%`} label="Recherche" />}
       </div>
       <div className="hud-day">Jour {day}</div>
     </header>

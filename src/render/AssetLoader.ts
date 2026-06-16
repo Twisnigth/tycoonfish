@@ -127,6 +127,54 @@ function normalizeObject(scene: THREE.Object3D, targetSize: number): THREE.Objec
   return wrapper;
 }
 
+export interface FishHero {
+  root: THREE.Object3D;
+  mixer: THREE.AnimationMixer | null;
+}
+
+/**
+ * Charge une GROSSE créature comme objet 3D individuel (scène complète) : centrée,
+ * axe long orienté sur +Z, mise à l'échelle pour que sa plus grande dimension ≈
+ * `targetSize`, et son AnimationMixer si le GLB contient une animation (léviathan
+ * & co). Contrairement à l'InstancedMesh, ça conserve TOUS les meshes + le rig.
+ * Chargé frais à chaque appel (les vedettes sont peu nombreuses) pour un mixer
+ * indépendant par instance.
+ */
+export function loadFishHero(url: string, targetSize: number): Promise<FishHero | null> {
+  return loader
+    .loadAsync(url)
+    .then((gltf) => {
+      const model = gltf.scene;
+      model.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+      const inner = new THREE.Group();
+      model.position.set(-center.x, -center.y, -center.z); // centre
+      inner.add(model);
+      if (size.x > size.z) inner.rotation.y = Math.PI / 2; // axe long -> Z (sens de nage)
+
+      const wrapper = new THREE.Group();
+      wrapper.add(inner);
+      wrapper.scale.setScalar(targetSize / maxDim);
+      wrapper.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true;
+      });
+
+      let mixer: THREE.AnimationMixer | null = null;
+      if (gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(gltf.animations[0]).reset().play();
+      }
+      return { root: wrapper, mixer } satisfies FishHero;
+    })
+    .catch(() => null);
+}
+
 export interface AnimatedModel {
   root: THREE.Object3D;
   mixer: THREE.AnimationMixer;

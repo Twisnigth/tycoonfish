@@ -4,7 +4,8 @@
   "characters": {
     "curator": { "glb": "assets/models/curator.glb", "rigged": true, "animation": "idle" },
     "visitor": { "glb": "assets/models/visitor.glb", "rigged": true, "animation": "idle" },
-    "aquarist": { "glb": "assets/models/aquarist.glb", "rigged": true, "animation": "idle" }
+    "aquarist": { "glb": "assets/models/aquarist.glb", "rigged": true, "animation": "idle" },
+    "keeper": { "glb": "assets/models/keeper.glb", "rigged": true, "animation": "idle" }
   },
   "fish": {
     "guppy": "assets/models/fish_guppy.glb",
@@ -24,13 +25,19 @@
     "emperor_angelfish": "assets/models/fish_emperor_angelfish.glb",
     "manta_ray": "assets/models/fish_manta_ray.glb",
     "dolphin": "assets/models/fish_dolphin.glb",
-    "shark": "assets/models/fish_shark.glb"
+    "shark": "assets/models/fish_shark.glb",
+    "kraken": "assets/models/fish_kraken.glb",
+    "leviathan": "assets/models/fish_leviathan.glb",
+    "sea_serpent": "assets/models/fish_sea_serpent.glb"
   },
   "buildings": {
     "entrance": "assets/models/building_entrance.glb",
     "food": "assets/models/building_food.glb",
     "restroom": "assets/models/building_restroom.glb",
-    "giftshop": "assets/models/building_giftshop.glb"
+    "giftshop": "assets/models/building_giftshop.glb",
+    "expedition": "assets/models/building_expedition.glb",
+    "research": "assets/models/building_research.glb",
+    "nursery": "assets/models/building_nursery.glb"
   },
   "decor": {
     "coral": "assets/models/decor_coral.glb",

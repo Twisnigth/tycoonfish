@@ -11,10 +11,19 @@ export type BuildingType =
   | 'path_wood'
   | 'tank_tropical'
   | 'tank_large'
+  | 'tank_reef'
   | 'tank_cold'
+  | 'tank_cold_large'
+  | 'tank_coral'
+  | 'tank_deep'
+  | 'tank_abyss'
+  | 'tank_mythic'
   | 'food'
   | 'restroom'
   | 'giftshop'
+  | 'expedition'
+  | 'research'
+  | 'nursery'
   | 'bench'
   | 'tree'
   | 'lamp'
@@ -72,13 +81,36 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     maintenance: 20, appeal: 0, modelSize: 4, render: { kind: 'tank', biome: 'tropical', temp: 25 },
   },
   tank_large: {
-    type: 'tank_large', name: 'Grand Bac', category: 'tanks', w: 3, h: 3, cost: 800,
+    type: 'tank_large', name: 'Grand Bac Tropical', category: 'tanks', w: 3, h: 3, cost: 800,
     maintenance: 60, appeal: 0, modelSize: 6, render: { kind: 'tank', biome: 'tropical', temp: 25 },
+  },
+  tank_reef: {
+    type: 'tank_reef', name: 'Récif (XL)', category: 'tanks', w: 4, h: 3, cost: 2200,
+    maintenance: 110, appeal: 4, modelSize: 7, render: { kind: 'tank', biome: 'tropical', temp: 26 },
   },
   tank_cold: {
     type: 'tank_cold', name: 'Bac Eaux Froides', category: 'tanks', w: 2, h: 2, cost: 500,
     maintenance: 35, appeal: 0, modelSize: 4, render: { kind: 'tank', biome: 'coldwater', temp: 8 },
-    requiresResearch: 'cold-biome',
+  },
+  tank_cold_large: {
+    type: 'tank_cold_large', name: 'Grand Bac Froid', category: 'tanks', w: 3, h: 3, cost: 1400,
+    maintenance: 80, appeal: 0, modelSize: 6, render: { kind: 'tank', biome: 'coldwater', temp: 6 },
+  },
+  tank_coral: {
+    type: 'tank_coral', name: 'Bac Récifal', category: 'tanks', w: 3, h: 2, cost: 1600,
+    maintenance: 70, appeal: 3, modelSize: 5, render: { kind: 'tank', biome: 'reef', temp: 26 },
+  },
+  tank_deep: {
+    type: 'tank_deep', name: 'Bac des Profondeurs', category: 'tanks', w: 3, h: 3, cost: 2600,
+    maintenance: 120, appeal: 5, modelSize: 6, render: { kind: 'tank', biome: 'deepsea', temp: 5 },
+  },
+  tank_abyss: {
+    type: 'tank_abyss', name: 'Bac Abyssal', category: 'tanks', w: 4, h: 3, cost: 4200,
+    maintenance: 180, appeal: 8, modelSize: 7, render: { kind: 'tank', biome: 'abyssal', temp: 2 },
+  },
+  tank_mythic: {
+    type: 'tank_mythic', name: 'Bassin Mythique', category: 'tanks', w: 5, h: 5, cost: 7000,
+    maintenance: 260, appeal: 12, modelSize: 8, render: { kind: 'tank', biome: 'mythic', temp: 15 },
   },
   food: {
     type: 'food', name: 'Stand Snack', category: 'infra', w: 2, h: 2, cost: 300,
@@ -91,6 +123,18 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   restroom: {
     type: 'restroom', name: 'Toilettes', category: 'infra', w: 2, h: 2, cost: 250,
     maintenance: 10, appeal: 1, modelSize: 3.4, render: { kind: 'building', model: 'restroom' },
+  },
+  expedition: {
+    type: 'expedition', name: 'Quai d\'Expédition', category: 'infra', w: 3, h: 2, cost: 400,
+    maintenance: 15, appeal: 2, modelSize: 4.5, render: { kind: 'building', model: 'expedition' },
+  },
+  research: {
+    type: 'research', name: 'Laboratoire', category: 'infra', w: 3, h: 2, cost: 1200,
+    maintenance: 40, appeal: 2, modelSize: 4.5, render: { kind: 'building', model: 'research' },
+  },
+  nursery: {
+    type: 'nursery', name: 'Nursery', category: 'infra', w: 3, h: 2, cost: 900,
+    maintenance: 30, appeal: 2, modelSize: 4.5, render: { kind: 'building', model: 'nursery' },
   },
   bench: {
     type: 'bench', name: 'Banc', category: 'decor', w: 1, h: 1, cost: 30,
